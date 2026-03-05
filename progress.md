@@ -72,3 +72,21 @@ Original prompt: PLEASE IMPLEMENT THIS PLAN: CEO Strategy Clinic Game MVP Plan (
 - Added automatic fallback to in-memory limiter if Upstash env vars are missing or Redis is temporarily unavailable.
 - Updated all rate-limited API routes to await async limiter checks.
 - Added Upstash env vars to `.env.example` and README setup docs.
+
+## Facilitator Event Injection Fix (2026-03-05)
+- Expanded facilitator ad-hoc event effect validation ranges to support stronger workshop scenarios:
+  - `cash`: -60..60
+  - `revenue_growth`: -25..25
+  - `market_share`: -25..25
+  - `talent_morale`: -30..30
+  - `operational_resilience`: -30..30
+  - `brand_reputation`: -30..30
+  - `regulatory_risk`: -30..30
+- Improved API body validation error formatting in `parseBody` to return path-based readable messages (e.g., `effects.cash: ...`) instead of raw Zod issue arrays.
+- Updated facilitator event form inputs to display and enforce per-metric min/max bounds client-side.
+- Added tests:
+  - `tests/unit/validation.test.ts` (expanded range acceptance + out-of-range rejection)
+  - `tests/unit/api.test.ts` (readable path-based validation error formatting)
+- Validation:
+  - `npm test` passed (5 files, 8 tests)
+  - `npm run build` passed

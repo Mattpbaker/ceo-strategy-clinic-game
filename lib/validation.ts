@@ -70,13 +70,13 @@ export const facilitatorEventSchema = z.object({
   narrative: z.string().trim().min(5).max(500),
   effects: z
     .object({
-      cash: z.number().min(-20).max(20).optional(),
-      revenue_growth: z.number().min(-15).max(15).optional(),
-      market_share: z.number().min(-15).max(15).optional(),
-      talent_morale: z.number().min(-20).max(20).optional(),
-      operational_resilience: z.number().min(-20).max(20).optional(),
-      brand_reputation: z.number().min(-20).max(20).optional(),
-      regulatory_risk: z.number().min(-20).max(20).optional()
+      cash: z.number().min(-60).max(60).optional(),
+      revenue_growth: z.number().min(-25).max(25).optional(),
+      market_share: z.number().min(-25).max(25).optional(),
+      talent_morale: z.number().min(-30).max(30).optional(),
+      operational_resilience: z.number().min(-30).max(30).optional(),
+      brand_reputation: z.number().min(-30).max(30).optional(),
+      regulatory_risk: z.number().min(-30).max(30).optional()
     })
     .refine((value) => Object.keys(value).length > 0, "At least one effect is required")
 });

@@ -30,6 +30,16 @@ const emptyEffects: EventEffectInputs = {
   regulatory_risk: ""
 };
 
+const effectBounds: Record<keyof EventEffectInputs, { min: number; max: number }> = {
+  cash: { min: -60, max: 60 },
+  revenue_growth: { min: -25, max: 25 },
+  market_share: { min: -25, max: 25 },
+  talent_morale: { min: -30, max: 30 },
+  operational_resilience: { min: -30, max: 30 },
+  brand_reputation: { min: -30, max: 30 },
+  regulatory_risk: { min: -30, max: 30 }
+};
+
 export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps): React.ReactElement {
   const searchParams = useSearchParams();
   const [state, setState] = useState<SessionState | null>(null);
@@ -275,22 +285,31 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
             </label>
 
             <div className="metrics-grid">
-              {Object.entries(eventEffects).map(([key, value]) => (
-                <label key={key}>
-                  {key}
-                  <input
-                    type="number"
-                    value={value}
-                    onChange={(event) =>
-                      setEventEffects((prev) => ({
-                        ...prev,
-                        [key]: event.target.value
-                      }))
-                    }
-                    placeholder="0"
-                  />
-                </label>
-              ))}
+              {(Object.entries(eventEffects) as Array<[keyof EventEffectInputs, string]>).map(
+                ([key, value]) => {
+                  const bounds = effectBounds[key];
+
+                  return (
+                    <label key={key}>
+                      {key} ({bounds.min} to {bounds.max})
+                      <input
+                        type="number"
+                        value={value}
+                        min={bounds.min}
+                        max={bounds.max}
+                        step={1}
+                        onChange={(event) =>
+                          setEventEffects((prev) => ({
+                            ...prev,
+                            [key]: event.target.value
+                          }))
+                        }
+                        placeholder="0"
+                      />
+                    </label>
+                  );
+                }
+              )}
             </div>
 
             <button type="submit">Inject Event</button>
