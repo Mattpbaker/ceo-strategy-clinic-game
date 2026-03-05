@@ -68,6 +68,17 @@ describe("store session flow", () => {
     expect(resolved.resolution.round_number).toBe(1);
     expect(resolved.leaderboard.length).toBe(2);
 
+    const betaInbox = store.listInteractionMessages(session.code, {
+      company_id: beta.company.id,
+      direction: "inbox"
+    });
+    expect(betaInbox.total).toBe(1);
+    expect(betaInbox.messages[0].status).toBe("accepted");
+
+    const results = store.getResults(session.code);
+    expect(results.performance_series.length).toBe(2);
+    expect(results.performance_series[0].points[0]?.round_number).toBe(1);
+
     const nextState = store.getSessionState(session.code);
     expect(nextState.session.current_round_number).toBe(2);
     expect(nextState.timeline.length).toBe(1);

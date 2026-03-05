@@ -5,12 +5,16 @@ import { scoreCompanies } from "@/lib/scoring";
 import {
   AuditLogEntry,
   Company,
+  CompanyMetricSnapshot,
+  CompanyPerformanceSeries,
   DecisionPayload,
   DecisionRecord,
   EventCard,
   InteractionProposal,
   InteractionResponse,
   InteractionStatus,
+  MessageCenterFeed,
+  MessageDirection,
   Player,
   Round,
   RoundEvent,
@@ -68,6 +72,7 @@ interface InMemoryTables {
   interaction_proposals: InteractionProposal[];
   interaction_responses: InteractionResponse[];
   score_snapshots: ScoreSnapshot[];
+  company_metric_snapshots: CompanyMetricSnapshot[];
   audit_log: AuditLogEntry[];
 }
 
@@ -83,6 +88,7 @@ class InMemoryGameStore {
     interaction_proposals: [],
     interaction_responses: [],
     score_snapshots: [],
+    company_metric_snapshots: [],
     audit_log: []
   };
 
@@ -511,6 +517,25 @@ class InMemoryGameStore {
       this.tables.score_snapshots.push(snapshot);
     }
 
+    const scoreByCompanyId = new Map<string, number>();
+    for (const breakdown of leaderboard) {
+      scoreByCompanyId.set(breakdown.company_id, breakdown.total_score);
+    }
+
+    for (const company of resolved.updatedCompanies) {
+      const metricSnapshot: CompanyMetricSnapshot = {
+        id: createId("cms"),
+        session_id: session.id,
+        round_id: round.id,
+        round_number: round.round_number,
+        company_id: company.id,
+        metrics: { ...company.metrics },
+        total_score: scoreByCompanyId.get(company.id) ?? 0,
+        created_at: nowIso()
+      };
+      this.tables.company_metric_snapshots.push(metricSnapshot);
+    }
+
     this.appendTimeline(session.id, {
       round_number: round.round_number,
       event: {
@@ -600,8 +625,133 @@ class InMemoryGameStore {
     return {
       session_id: session.id,
       leaderboard,
-      decision_timeline: this.timeline.get(session.id) ?? []
+      decision_timeline: this.timeline.get(session.id) ?? [],
+      performance_series: this.getPerformanceSeries(sessionRef)
     };
+  }
+
+  listInteractionMessages(
+    sessionRef: string,
+    options: {
+      company_id?: string;
+      direction?: "inbox" | "outbox" | "all";
+      status?: InteractionStatus;
+      limit?: number;
+    } = {}
+  ): MessageCenterFeed {
+    const session = this.requireSession(sessionRef);
+    const direction = options.direction ?? "all";
+    const limit = clampLimit(options.limit);
+    const companyId = options.company_id;
+
+    if (companyId) {
+      this.requireCompany(session.id, companyId);
+    }
+
+    const companyById = new Map(
+      this.tables.companies
+        .filter((company) => company.session_id === session.id)
+        .map((company) => [company.id, company])
+    );
+
+    const roundById = new Map(
+      this.tables.rounds
+        .filter((round) => round.session_id === session.id)
+        .map((round) => [round.id, round])
+    );
+
+    const feed = this.tables.interaction_proposals
+      .filter((proposal) => proposal.session_id === session.id)
+      .filter((proposal) => !options.status || proposal.status === options.status)
+      .map((proposal) => {
+        const messageDirection = resolveDirection(proposal, companyId);
+        if (direction !== "all" && messageDirection !== direction) {
+          return null;
+        }
+
+        if (companyId && messageDirection === "neutral") {
+          return null;
+        }
+
+        const proposer = companyById.get(proposal.proposer_company_id);
+        const target = companyById.get(proposal.target_company_id);
+        const round = roundById.get(proposal.round_id);
+
+        return {
+          proposal_id: proposal.id,
+          session_id: proposal.session_id,
+          round_id: proposal.round_id,
+          round_number: round?.round_number ?? null,
+          proposer_company_id: proposal.proposer_company_id,
+          proposer_company_name: proposer?.name ?? proposal.proposer_company_id,
+          target_company_id: proposal.target_company_id,
+          target_company_name: target?.name ?? proposal.target_company_id,
+          type: proposal.type,
+          terms: proposal.terms,
+          status: proposal.status,
+          direction: messageDirection,
+          expires_at: proposal.expires_at,
+          created_at: proposal.created_at,
+          updated_at: proposal.updated_at
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort(compareMessagesNewestFirst);
+
+    const counts = countInteractionStatuses(feed);
+
+    return {
+      session_id: session.id,
+      total: feed.length,
+      scope: {
+        company_id: companyId,
+        direction,
+        status: options.status,
+        limit
+      },
+      counts,
+      messages: feed.slice(0, limit)
+    };
+  }
+
+  getPerformanceSeries(sessionRef: string): CompanyPerformanceSeries[] {
+    const session = this.requireSession(sessionRef);
+
+    const companies = this.tables.companies
+      .filter((company) => company.session_id === session.id)
+      .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+
+    const snapshots = this.tables.company_metric_snapshots
+      .filter((snapshot) => snapshot.session_id === session.id)
+      .sort((a, b) => {
+        if (a.round_number !== b.round_number) {
+          return a.round_number - b.round_number;
+        }
+        return Date.parse(a.created_at) - Date.parse(b.created_at);
+      });
+
+    const snapshotsByCompany = new Map<string, CompanyMetricSnapshot[]>();
+    for (const snapshot of snapshots) {
+      const list = snapshotsByCompany.get(snapshot.company_id) ?? [];
+      list.push(snapshot);
+      snapshotsByCompany.set(snapshot.company_id, list);
+    }
+
+    return companies.map((company) => {
+      const points = (snapshotsByCompany.get(company.id) ?? []).map((snapshot) => ({
+        round_number: snapshot.round_number,
+        total_score: snapshot.total_score,
+        metrics: { ...snapshot.metrics },
+        created_at: snapshot.created_at
+      }));
+
+      return {
+        company_id: company.id,
+        company_name: company.name,
+        history_start_round: points[0]?.round_number ?? null,
+        points
+      };
+    });
   }
 
   getTables(): InMemoryTables {
@@ -620,6 +770,7 @@ class InMemoryGameStore {
       interaction_proposals: [],
       interaction_responses: [],
       score_snapshots: [],
+      company_metric_snapshots: [],
       audit_log: []
     };
     this.timeline.clear();
@@ -735,6 +886,61 @@ class InMemoryGameStore {
       created_at: nowIso()
     });
   }
+}
+
+function resolveDirection(
+  proposal: InteractionProposal,
+  companyId?: string
+): MessageDirection {
+  if (!companyId) {
+    return "neutral";
+  }
+  if (proposal.target_company_id === companyId) {
+    return "inbox";
+  }
+  if (proposal.proposer_company_id === companyId) {
+    return "outbox";
+  }
+  return "neutral";
+}
+
+function compareMessagesNewestFirst(
+  a: MessageCenterFeed["messages"][number],
+  b: MessageCenterFeed["messages"][number]
+): number {
+  const aUpdated = Date.parse(a.updated_at);
+  const bUpdated = Date.parse(b.updated_at);
+  const aCreated = Date.parse(a.created_at);
+  const bCreated = Date.parse(b.created_at);
+
+  const aStamp = Number.isNaN(aUpdated) ? aCreated : aUpdated;
+  const bStamp = Number.isNaN(bUpdated) ? bCreated : bUpdated;
+  return bStamp - aStamp;
+}
+
+function countInteractionStatuses(
+  messages: MessageCenterFeed["messages"]
+): MessageCenterFeed["counts"] {
+  const counts: MessageCenterFeed["counts"] = {
+    pending: 0,
+    accepted: 0,
+    rejected: 0,
+    countered: 0,
+    expired: 0
+  };
+
+  for (const message of messages) {
+    counts[message.status] += 1;
+  }
+
+  return counts;
+}
+
+function clampLimit(limit?: number): number {
+  if (!limit || Number.isNaN(limit)) {
+    return 200;
+  }
+  return Math.max(1, Math.min(limit, 500));
 }
 
 let singleton: InMemoryGameStore | null = null;

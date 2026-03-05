@@ -113,3 +113,41 @@ Original prompt: PLEASE IMPLEMENT THIS PLAN: CEO Strategy Clinic Game MVP Plan (
 - Observed runtime state from `render_game_to_text` confirms guidance fields are exposed:
   - `next_action`, `decision_submitted_this_round`, `decision_window_open`, `interaction_window_open`.
 - No `errors-*.json` files were generated in either Playwright run.
+
+## Visual Hierarchy + Analytics + Message Center Overhaul (2026-03-05, in progress)
+- Added backend types for performance history + message center feed in `lib/types.ts` and runtime store surface in `lib/store-runtime.ts`.
+- Implemented in-memory store support in `lib/store.ts`:
+  - Persist `company_metric_snapshots` on round resolve.
+  - Added `listInteractionMessages(...)` with direction/status/limit filtering + counts.
+  - Added `getPerformanceSeries(...)` and wired `performance_series` into `getResults(...)`.
+- Implemented Supabase store support in `lib/store-supabase.ts`:
+  - Persist `company_metric_snapshots` on round resolve.
+  - Added `listInteractionMessages(...)` and `getPerformanceSeries(...)`.
+  - Wired `performance_series` into `getResults(...)`.
+- Added query validation schema for message feed in `lib/validation.ts`.
+- Added new API endpoint `GET /api/sessions/[sessionRef]/messages` with facilitator-token or company-scoped access rules in `app/api/sessions/[sessionRef]/messages/route.ts`.
+- Added schema + migration for `company_metric_snapshots` in `supabase/schema.sql` and `supabase/migrations/20260305170500_company_metric_snapshots.sql` (including realtime publication + indexes).
+- Validation: `npm test -- tests/unit/store-flow.test.ts` passed.
+- Next: implement shared UI components/charts/drawer and redesign player/facilitator dashboards, then run full tests/build + Playwright loop.
+- Implemented full GF-003 UI pass:
+  - New shared components: `components/ui/breaking-news-panel.tsx`, `components/ui/round-snapshot-card.tsx`, `components/ui/message-center-drawer.tsx`.
+  - New chart components (`recharts`): `components/charts/company-performance-chart.tsx`, `components/charts/leaderboard-comparison-chart.tsx`.
+  - Rebuilt `components/player-dashboard.tsx` with hierarchy-first layout, company assets/value card, metric-filtered value chart, leaderboard+comparison chart, and right slide-over message center (`Inbox|Outbox|Compose`) with identity fallback control in drawer.
+  - Rebuilt `components/facilitator-dashboard.tsx` with hierarchy-first layout, analytics row, preserved controls/event injection, and monitor-only message drawer tabs (`All|Pending|Accepted|Rejected/Expired`).
+  - Refreshed `app/globals.css` with new visual system, card hierarchy, breaking-news styling, chart/legend styling, and drawer animations/responsive behavior.
+- Added regression coverage in `tests/unit/store-flow.test.ts` for message feed + performance series presence.
+- Added GF-003 updates to `docs/game-flow.md` (current flow, API table, active register, dated log).
+- Validation run complete:
+  - `npm test` passed.
+  - `npm run build` passed.
+  - Supabase migration pushed: `supabase db push --linked` (applied `20260305170500_company_metric_snapshots.sql`).
+  - Manual API checks:
+    - no token + no company_id => 400
+    - no token + company_id => scoped feed
+    - facilitator token => session-wide feed
+  - Playwright skill loop artifacts reviewed:
+    - `output/web-game/visual-overhaul/waiting-state/*`
+    - `output/web-game/visual-overhaul/decision-state/*`
+    - `output/web-game/visual-overhaul/interaction-state/*`
+    - `output/web-game/visual-overhaul/post-resolve/*`
+- Noted issue discovered during testing: resolving before migration existed caused partial round-update behavior in Supabase mode (round marked resolved before snapshot insert failed). Added follow-up in docs to consider transactional resolve via RPC.

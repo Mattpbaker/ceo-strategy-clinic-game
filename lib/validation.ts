@@ -84,3 +84,10 @@ export const facilitatorEventSchema = z.object({
 export const facilitatorControlSchema = z.object({
   action: z.enum(["start", "pause", "resume", "advance_to_interaction"])
 });
+
+export const messageFeedQuerySchema = z.object({
+  company_id: z.string().trim().min(3).optional(),
+  direction: z.enum(["inbox", "outbox", "all"]).optional(),
+  status: z.enum(["pending", "accepted", "rejected", "countered", "expired"]).optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional()
+});

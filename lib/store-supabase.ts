@@ -11,12 +11,17 @@ import {
 } from "@/lib/facilitator-auth";
 import {
   Company,
+  CompanyMetricSnapshot,
+  CompanyPerformanceSeries,
   CompanyMetrics,
   DecisionPayload,
   DecisionRecord,
   EventCard,
   InteractionProposal,
   InteractionResponse,
+  InteractionStatus,
+  MessageCenterFeed,
+  MessageDirection,
   Player,
   Round,
   RoundEvent,
@@ -696,6 +701,29 @@ class SupabaseGameStore implements RuntimeGameStore {
       }
     }
 
+    const scoreByCompanyId = new Map<string, number>();
+    for (const entry of leaderboard) {
+      scoreByCompanyId.set(entry.company_id, entry.total_score);
+    }
+
+    const metricRows = resolved.updatedCompanies.map((company) => ({
+      session_id: session.id,
+      round_id: round.id,
+      round_number: round.round_number,
+      company_id: company.id,
+      metrics: company.metrics,
+      total_score: scoreByCompanyId.get(company.id) ?? 0
+    }));
+
+    if (metricRows.length > 0) {
+      const { error: metricError } = await this.client
+        .from("company_metric_snapshots")
+        .insert(metricRows);
+      if (metricError) {
+        throw new Error(metricError.message);
+      }
+    }
+
     let updatedSession: Session;
     if (session.current_round_number >= session.total_rounds) {
       updatedSession = await this.updateSession(session.id, {
@@ -772,16 +800,149 @@ class SupabaseGameStore implements RuntimeGameStore {
     };
   }
 
+  async listInteractionMessages(
+    sessionRef: string,
+    options: {
+      company_id?: string;
+      direction?: "inbox" | "outbox" | "all";
+      status?: InteractionStatus;
+      limit?: number;
+    } = {}
+  ): Promise<MessageCenterFeed> {
+    const session = await this.requireSession(sessionRef);
+    const companyId = options.company_id;
+    const direction = options.direction ?? "all";
+    const limit = clampLimit(options.limit);
+
+    if (companyId) {
+      await this.requireCompany(companyId, session.id);
+    }
+
+    let proposalQuery = this.client
+      .from("interaction_proposals")
+      .select("*")
+      .eq("session_id", session.id)
+      .order("updated_at", { ascending: false })
+      .order("created_at", { ascending: false });
+
+    if (options.status) {
+      proposalQuery = proposalQuery.eq("status", options.status);
+    }
+
+    const [proposalRows, companyRows, roundRows] = await Promise.all([
+      proposalQuery,
+      this.client.from("companies").select("id,name").eq("session_id", session.id),
+      this.client.from("rounds").select("id,round_number").eq("session_id", session.id)
+    ]);
+
+    if (proposalRows.error) {
+      throw new Error(proposalRows.error.message);
+    }
+    if (companyRows.error) {
+      throw new Error(companyRows.error.message);
+    }
+    if (roundRows.error) {
+      throw new Error(roundRows.error.message);
+    }
+
+    const companyNameById = new Map<string, string>(
+      (companyRows.data || []).map((row: any) => [row.id as string, row.name as string])
+    );
+    const roundNumberById = new Map<string, number>(
+      (roundRows.data || []).map((row: any) => [row.id as string, row.round_number as number])
+    );
+
+    const feed = (proposalRows.data || [])
+      .map((row: any) => this.mapInteraction(row))
+      .map((proposal) => {
+        const messageDirection = resolveDirection(proposal, companyId);
+        if (companyId && messageDirection === "neutral") {
+          return null;
+        }
+        if (direction !== "all" && messageDirection !== direction) {
+          return null;
+        }
+
+        return {
+          proposal_id: proposal.id,
+          session_id: proposal.session_id,
+          round_id: proposal.round_id,
+          round_number: roundNumberById.get(proposal.round_id) ?? null,
+          proposer_company_id: proposal.proposer_company_id,
+          proposer_company_name:
+            companyNameById.get(proposal.proposer_company_id) ?? proposal.proposer_company_id,
+          target_company_id: proposal.target_company_id,
+          target_company_name:
+            companyNameById.get(proposal.target_company_id) ?? proposal.target_company_id,
+          type: proposal.type,
+          terms: proposal.terms,
+          status: proposal.status,
+          direction: messageDirection,
+          expires_at: proposal.expires_at,
+          created_at: proposal.created_at,
+          updated_at: proposal.updated_at
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort(compareMessagesNewestFirst);
+
+    const counts = countInteractionStatuses(feed);
+
+    return {
+      session_id: session.id,
+      total: feed.length,
+      scope: {
+        company_id: companyId,
+        direction,
+        status: options.status,
+        limit
+      },
+      counts,
+      messages: feed.slice(0, limit)
+    };
+  }
+
+  async getPerformanceSeries(sessionRef: string): Promise<CompanyPerformanceSeries[]> {
+    const session = await this.requireSession(sessionRef);
+    const companies = await this.listCompanies(session.id);
+    const metricSnapshots = await this.listCompanyMetricSnapshots(session.id);
+
+    const snapshotsByCompanyId = new Map<string, CompanyMetricSnapshot[]>();
+    for (const snapshot of metricSnapshots) {
+      const list = snapshotsByCompanyId.get(snapshot.company_id) ?? [];
+      list.push(snapshot);
+      snapshotsByCompanyId.set(snapshot.company_id, list);
+    }
+
+    return companies.map((company) => {
+      const points = (snapshotsByCompanyId.get(company.id) ?? []).map((snapshot) => ({
+        round_number: snapshot.round_number,
+        total_score: snapshot.total_score,
+        metrics: { ...snapshot.metrics },
+        created_at: snapshot.created_at
+      }));
+
+      return {
+        company_id: company.id,
+        company_name: company.name,
+        history_start_round: points[0]?.round_number ?? null,
+        points
+      };
+    });
+  }
+
   async getResults(sessionRef: string): Promise<SessionResults> {
     const session = await this.requireSession(sessionRef);
     const companies = await this.listCompanies(session.id);
     const leaderboard = scoreCompanies(companies);
     const decisionTimeline = await this.buildTimeline(session.id);
+    const performanceSeries = await this.getPerformanceSeries(sessionRef);
 
     return {
       session_id: session.id,
       leaderboard,
-      decision_timeline: decisionTimeline
+      decision_timeline: decisionTimeline,
+      performance_series: performanceSeries
     };
   }
 
@@ -1038,6 +1199,21 @@ class SupabaseGameStore implements RuntimeGameStore {
     }
 
     return (data || []).map((row) => this.mapCompany(row));
+  }
+
+  private async listCompanyMetricSnapshots(sessionId: string): Promise<CompanyMetricSnapshot[]> {
+    const { data, error } = await this.client
+      .from("company_metric_snapshots")
+      .select("*")
+      .eq("session_id", sessionId)
+      .order("round_number", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return (data || []).map((row) => this.mapCompanyMetricSnapshot(row));
   }
 
   private async listDecisionsByRound(roundId: string): Promise<DecisionRecord[]> {
@@ -1320,6 +1496,19 @@ class SupabaseGameStore implements RuntimeGameStore {
     };
   }
 
+  private mapCompanyMetricSnapshot(row: any): CompanyMetricSnapshot {
+    return {
+      id: row.id,
+      session_id: row.session_id,
+      round_id: row.round_id,
+      round_number: row.round_number,
+      company_id: row.company_id,
+      metrics: row.metrics as CompanyMetrics,
+      total_score: row.total_score,
+      created_at: row.created_at
+    };
+  }
+
   private mapInteraction(row: any): InteractionProposal {
     return {
       id: row.id,
@@ -1346,6 +1535,61 @@ class SupabaseGameStore implements RuntimeGameStore {
       created_at: row.created_at
     };
   }
+}
+
+function resolveDirection(
+  proposal: InteractionProposal,
+  companyId?: string
+): MessageDirection {
+  if (!companyId) {
+    return "neutral";
+  }
+  if (proposal.target_company_id === companyId) {
+    return "inbox";
+  }
+  if (proposal.proposer_company_id === companyId) {
+    return "outbox";
+  }
+  return "neutral";
+}
+
+function compareMessagesNewestFirst(
+  a: MessageCenterFeed["messages"][number],
+  b: MessageCenterFeed["messages"][number]
+): number {
+  const aUpdated = Date.parse(a.updated_at);
+  const bUpdated = Date.parse(b.updated_at);
+  const aCreated = Date.parse(a.created_at);
+  const bCreated = Date.parse(b.created_at);
+
+  const aStamp = Number.isNaN(aUpdated) ? aCreated : aUpdated;
+  const bStamp = Number.isNaN(bUpdated) ? bCreated : bUpdated;
+  return bStamp - aStamp;
+}
+
+function countInteractionStatuses(
+  messages: MessageCenterFeed["messages"]
+): MessageCenterFeed["counts"] {
+  const counts: MessageCenterFeed["counts"] = {
+    pending: 0,
+    accepted: 0,
+    rejected: 0,
+    countered: 0,
+    expired: 0
+  };
+
+  for (const message of messages) {
+    counts[message.status] += 1;
+  }
+
+  return counts;
+}
+
+function clampLimit(limit?: number): number {
+  if (!limit || Number.isNaN(limit)) {
+    return 200;
+  }
+  return Math.max(1, Math.min(limit, 500));
 }
 
 function groupBy<T extends Record<string, any>>(rows: T[], key: keyof T): Map<string, T[]> {

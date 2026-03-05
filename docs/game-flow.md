@@ -34,12 +34,15 @@
 - `interaction`: interaction proposals/responses phase (decisions are still accepted).
 - `resolved`: round has been resolved and scored.
 
-### Player UX guidance (dashboard)
-- Player UI is structured as a guided sequence with labeled steps (identity, context, decision, interaction, proposal response, recap).
-- A top-level "Round Guide" card surfaces next action based on session status, phase, and player submission status.
-- Decision, interaction, and response controls are disabled with explicit lock reasons when unavailable.
-- Decision submission status is surfaced per round in UI using local player-side round markers.
-- Round snapshot recap highlights current phase, submission state, proposal count, and player rank.
+### Dashboard hierarchy and message center
+- Player and facilitator dashboards use the same top-down hierarchy:
+  - Hero row (status badges + message center button).
+  - Priority row (prominent round snapshot + breaking news panel).
+  - Analytics rows (company value card, value charts, leaderboard, comparison chart).
+- Player identity is no longer a primary visible section; identity recovery lives in Message Center disclosure controls.
+- Player message center opens as a right slide-over with tabs: `Inbox`, `Outbox`, `Compose`.
+- Facilitator message center opens as a right slide-over with monitor-only tabs: `All`, `Pending`, `Accepted`, `Rejected/Expired`.
+- Player decision, interaction, and proposal response actions remain phase/status guarded with lock reasons.
 
 ### Manual facilitator controls
 - `start`: moves first round (`round 1`) from `pending` to `decision`, sets session to `running`.
@@ -54,6 +57,7 @@
 - Decisions: submitted decisions are used per company; missing decisions fall back to resolver defaults.
 - Interactions: only `accepted` proposals apply effects; non-accepted proposals do not affect metrics.
 - Scoring: balanced scorecard is computed after updated metrics, and score snapshots are stored for the round.
+- Performance history: one `company_metric_snapshots` row per company is written each resolved round (`metrics` + `total_score`).
 - Timeline: one timeline entry is appended per resolved round with event, decisions, interactions, and leaderboard.
 - Advancement: non-final rounds increment `current_round_number` and open next round in `decision`; final round marks session `completed`.
 
@@ -87,7 +91,7 @@ flowchart TD
    - Leaderboard and score snapshots are produced.
    - Timeline entry is recorded.
 9. If more rounds remain, session advances to next round and opens `decision`; otherwise status becomes `completed`.
-10. Facilitator/players view ongoing state (`GET /api/sessions/{sessionRef}/state`) and results/timeline (`GET /api/sessions/{sessionRef}/results`).
+10. Facilitator/players view ongoing state (`GET /api/sessions/{sessionRef}/state`), results/timeline/performance series (`GET /api/sessions/{sessionRef}/results`), and message feed (`GET /api/sessions/{sessionRef}/messages`).
 
 Current constraints:
 - No automatic timer-based phase transitions; facilitator drives phase changes.
@@ -106,6 +110,7 @@ Current constraints:
 | `POST /api/facilitator/{sessionRef}/control` | Facilitator | `x-facilitator-token` | Depends on action and current session/round state | Missing/invalid token, invalid action, cannot start with zero players | `facilitator-control` (+ session/token prefix) |
 | `POST /api/facilitator/{sessionRef}/event` | Facilitator | `x-facilitator-token` | Current round not `resolved` | Missing/invalid token, facilitator event already used in session, event already assigned for round, invalid payload | `facilitator-event` (+ session/token prefix) |
 | `POST /api/facilitator/{sessionRef}/round/resolve` | Facilitator | `x-facilitator-token` | Session started and not completed; current round not resolved | Missing/invalid token, session not started/completed, round already resolved | `facilitator-resolve` (+ session/token prefix) |
+| `GET /api/sessions/{sessionRef}/messages` | Facilitator/Player | Facilitator token for unscoped feed; without token `company_id` is required | Any (session must exist) | Missing `company_id` without token, invalid token, invalid filters/limit, session/company not found | `message-feed` (+ session/company/token scope) |
 | `GET /api/sessions/{sessionRef}/results` | Facilitator/Player | None | Any (session must exist) | Session not found | None |
 
 ## Active Change Register
@@ -113,6 +118,7 @@ Current constraints:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `GF-001` | Create living game flow hub | `Done` | Establish single source of truth for flow + future updates | `Flow` | `docs/game-flow.md` | File contains required sections, state diagram, API table, register, log, and update checklist | This plan (chat request on 2026-03-05) | 2026-03-05 | 2026-03-05 |
 | `GF-002` | Guided player dashboard flow | `Done` | Reduce player confusion with natural in-UI progression and action feedback | `UI, Flow` | `components/player-dashboard.tsx`, `app/globals.css`, `tests/unit/resolver.test.ts`, `docs/game-flow.md` | Guided steps visible, locked-action reasons shown, round submission state shown, recap blocks added, tests/build pass | Player UX improvement request (chat request on 2026-03-05) | 2026-03-05 | 2026-03-05 |
+| `GF-003` | Visual hierarchy + analytics + message center overhaul | `Done` | Improve decision clarity, elevate key round context, and add richer cross-round insight/message workflows | `UI, API, Data, Flow` | `components/player-dashboard.tsx`, `components/facilitator-dashboard.tsx`, `components/ui/*`, `components/charts/*`, `app/globals.css`, `app/api/sessions/[sessionRef]/messages/route.ts`, `lib/store-runtime.ts`, `lib/store.ts`, `lib/store-supabase.ts`, `lib/types.ts`, `lib/validation.ts`, `supabase/schema.sql`, `supabase/migrations/20260305170500_company_metric_snapshots.sql`, `tests/unit/store-flow.test.ts`, `docs/game-flow.md` | New message endpoint and feed auth behavior shipped; performance snapshots persisted and exposed as results `performance_series`; player/facilitator hierarchy redesign shipped; charts and drawer flows functional; tests/build/playwright validation complete | Visual hierarchy + analytics + message center plan (chat request on 2026-03-05) | 2026-03-05 | 2026-03-05 |
 
 ## Change Log (Dated)
 ### 2026-03-05
@@ -128,6 +134,13 @@ Current constraints:
 - **Behavior impact:** Player-facing UX now provides a natural flow and clearer action affordances without changing core API contracts.
 - **Validation/tests run:** `npm test` (5 files, 8 tests), `npm run build`, and Playwright skill loop screenshots/state validation in `output/web-game/player-guide` and `output/web-game/player-guide-running` (no error artifact files generated).
 - **Follow-ups:** Consider server-authoritative per-player decision status in session state to replace local-only submission markers.
+
+### 2026-03-05
+- **Change ID:** `GF-003`
+- **What changed:** Added session message feed endpoint (`GET /api/sessions/{sessionRef}/messages`), added `company_metric_snapshots` persistence and `performance_series` in results, and redesigned both dashboards around round snapshot + breaking news + analytics hierarchy with a right-side message center drawer.
+- **Behavior impact:** Gameplay rules are unchanged, but player/facilitator UI flow is now hierarchy-first with charted value history, session-wide message monitoring, and compose/inbox/outbox message workflows for players.
+- **Validation/tests run:** `npm test`; `npm run build`; `supabase db push --linked` (applied migration `20260305170500_company_metric_snapshots.sql`); manual API checks for message auth/filter behavior; Playwright skill loop artifacts reviewed for waiting/decision/interaction/post-resolve in `output/web-game/visual-overhaul/*`.
+- **Follow-ups:** Consider wrapping round resolve writes in a DB transaction/RPC to avoid partial updates if downstream writes fail after phase updates.
 
 ## Update Checklist (Before/After Changes)
 Before implementing a change:

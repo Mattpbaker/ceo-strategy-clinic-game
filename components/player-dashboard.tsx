@@ -1,8 +1,13 @@
 "use client";
 
+import { CompanyPerformanceChart, PerformanceMetricKey } from "@/components/charts/company-performance-chart";
+import { LeaderboardComparisonChart } from "@/components/charts/leaderboard-comparison-chart";
+import { BreakingNewsPanel } from "@/components/ui/breaking-news-panel";
+import { MessageCenterDrawer } from "@/components/ui/message-center-drawer";
+import { RoundSnapshotCard } from "@/components/ui/round-snapshot-card";
 import { fetchApi } from "@/lib/http-client";
 import { useSessionRealtime } from "@/lib/use-session-realtime";
-import { Company, SessionResults, SessionState } from "@/lib/types";
+import { Company, InteractionProposal, MessageCenterFeed, SessionResults, SessionState } from "@/lib/types";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -10,10 +15,9 @@ interface PlayerDashboardProps {
   sessionRef: string;
 }
 
-const interactionTypeLabels: Record<
-  "trade_contract" | "joint_venture" | "price_war" | "talent_poach" | "reputation_challenge",
-  string
-> = {
+type InteractionType = InteractionProposal["type"];
+
+const interactionTypeLabels: Record<InteractionType, string> = {
   trade_contract: "Trade contract",
   joint_venture: "Joint venture",
   price_war: "Price war",
@@ -40,12 +44,22 @@ function formatPhase(phase: string | null | undefined): string {
   }
 }
 
-function formatShortTime(iso: string): string {
+function formatMetricLabel(metric: string): string {
+  return metric
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatDateTime(iso: string): string {
   const parsed = new Date(iso);
   if (Number.isNaN(parsed.getTime())) {
     return "Unknown";
   }
-  return parsed.toLocaleTimeString([], {
+
+  return parsed.toLocaleString([], {
+    month: "short",
+    day: "numeric",
     hour: "2-digit",
     minute: "2-digit"
   });
@@ -53,12 +67,15 @@ function formatShortTime(iso: string): string {
 
 export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.ReactElement {
   const searchParams = useSearchParams();
+
   const [playerId, setPlayerId] = useState(searchParams.get("playerId") || "");
   const [state, setState] = useState<SessionState | null>(null);
   const [results, setResults] = useState<SessionResults | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
   const [submittedRounds, setSubmittedRounds] = useState<number[]>([]);
+  const [selectedMetric, setSelectedMetric] = useState<PerformanceMetricKey>("total_score");
 
   const [budget, setBudget] = useState({
     growth: 20,
@@ -72,11 +89,15 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
   >("improve_efficiency");
   const [riskPosture, setRiskPosture] = useState<"conservative" | "balanced" | "aggressive">("balanced");
 
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<"inbox" | "outbox" | "compose">("inbox");
+  const [messageFeed, setMessageFeed] = useState<MessageCenterFeed | null>(null);
+  const [messageLoading, setMessageLoading] = useState(false);
+
   const [targetCompanyId, setTargetCompanyId] = useState("");
-  const [interactionType, setInteractionType] = useState<
-    "trade_contract" | "joint_venture" | "price_war" | "talent_poach" | "reputation_challenge"
-  >("trade_contract");
+  const [interactionType, setInteractionType] = useState<InteractionType>("trade_contract");
   const [interactionIntensity, setInteractionIntensity] = useState(50);
+  const [interactionMessage, setInteractionMessage] = useState("");
 
   const decisionStorageKey = useMemo(() => {
     const normalized = playerId.trim();
@@ -88,9 +109,12 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
 
   const load = useCallback(async () => {
     try {
-      const sessionState = await fetchApi<SessionState>(`/api/sessions/${sessionRef}/state`);
+      const [sessionState, sessionResults] = await Promise.all([
+        fetchApi<SessionState>(`/api/sessions/${sessionRef}/state`),
+        fetchApi<SessionResults>(`/api/sessions/${sessionRef}/results`)
+      ]);
+
       setState(sessionState);
-      const sessionResults = await fetchApi<SessionResults>(`/api/sessions/${sessionRef}/results`);
       setResults(sessionResults);
       setError(null);
     } catch (loadError) {
@@ -134,7 +158,8 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
       "round_events",
       "decisions",
       "interaction_proposals",
-      "score_snapshots"
+      "score_snapshots",
+      "company_metric_snapshots"
     ],
     []
   );
@@ -147,11 +172,11 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
   });
 
   const myCompany = useMemo(() => {
-    if (!state || !playerId) {
+    if (!state || !playerId.trim()) {
       return null;
     }
     return state.companies.find((company) => company.player_id === playerId.trim()) ?? null;
-  }, [state, playerId]);
+  }, [playerId, state]);
 
   useEffect(() => {
     if (!state || playerId.trim()) {
@@ -177,40 +202,24 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
     }
   }, [playerId, state]);
 
-  const incomingProposals = useMemo(() => {
-    if (!state || !myCompany) {
-      return [];
-    }
-    return state.pending_interactions.filter((proposal) => proposal.target_company_id === myCompany.id);
-  }, [myCompany, state]);
-
-  const otherCompanies: Company[] = useMemo(() => {
-    if (!state || !myCompany) {
-      return [];
-    }
-    return state.companies.filter((company) => company.id !== myCompany.id);
-  }, [myCompany, state]);
-
-  useEffect(() => {
-    if (!targetCompanyId && state && myCompany) {
-      const firstTarget = state.companies.find((company) => company.id !== myCompany.id);
-      if (firstTarget) {
-        setTargetCompanyId(firstTarget.id);
-      }
-    }
-  }, [myCompany, state, targetCompanyId]);
-
   const currentRound = state?.current_round ?? null;
   const currentRoundNumber = currentRound?.round_number ?? state?.session.current_round_number ?? null;
-  const sessionStatus = state?.session.status ?? "waiting";
   const roundPhase = currentRound?.phase ?? "pending";
+  const sessionStatus = state?.session.status ?? "waiting";
   const sessionAcceptsActions = sessionStatus === "running" || sessionStatus === "paused";
   const decisionWindowOpen = roundPhase === "decision" || roundPhase === "interaction";
   const interactionWindowOpen = decisionWindowOpen;
+
   const hasSubmittedCurrentRound =
     currentRoundNumber !== null && submittedRounds.includes(currentRoundNumber);
-  const budgetTotal =
-    budget.growth + budget.people + budget.resilience + budget.brand + budget.compliance;
+
+  const mySeries = useMemo(() => {
+    if (!results || !myCompany) {
+      return null;
+    }
+    return results.performance_series.find((entry) => entry.company_id === myCompany.id) ?? null;
+  }, [myCompany, results]);
+
   const myLeaderboardEntry = useMemo(() => {
     if (!results || !myCompany) {
       return null;
@@ -218,9 +227,22 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
     return results.leaderboard.find((entry) => entry.company_id === myCompany.id) ?? null;
   }, [results, myCompany]);
 
+  const otherCompanies = useMemo(() => {
+    if (!state || !myCompany) {
+      return [];
+    }
+    return state.companies.filter((company) => company.id !== myCompany.id);
+  }, [myCompany, state]);
+
+  useEffect(() => {
+    if (!targetCompanyId && otherCompanies.length > 0) {
+      setTargetCompanyId(otherCompanies[0].id);
+    }
+  }, [otherCompanies, targetCompanyId]);
+
   const decisionBlockedReason = useMemo(() => {
     if (!myCompany) {
-      return "Enter your player ID to unlock decision controls.";
+      return "Connect your identity from Message Center settings first.";
     }
     if (!currentRound) {
       return "No active round is available yet.";
@@ -236,7 +258,7 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
 
   const interactionBlockedReason = useMemo(() => {
     if (!myCompany) {
-      return "Enter your player ID to unlock interaction controls.";
+      return "Connect your identity from Message Center settings first.";
     }
     if (!currentRound) {
       return "No active round is available yet.";
@@ -265,10 +287,10 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
 
   const responseBlockedReason = useMemo(() => {
     if (!myCompany) {
-      return "Enter your player ID to respond to proposals.";
+      return "Connect your identity to respond.";
     }
     if (!sessionAcceptsActions) {
-      return "Proposal responses are locked because the session is not active.";
+      return "Responses are locked because the session is not active.";
     }
     if (!currentRound) {
       return "No active round is available yet.";
@@ -278,73 +300,68 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
 
   const nextAction = useMemo(() => {
     if (!myCompany) {
-      return {
-        title: "Step 1: Confirm your company identity",
-        detail: "Enter your player ID to connect this dashboard to your company."
-      };
+      return "Open Message Center and use Change identity to connect your company.";
     }
-
     if (sessionStatus === "waiting") {
-      return {
-        title: "Waiting for facilitator start",
-        detail: "Your company is ready. Review your metrics and wait for the game to begin."
-      };
+      return "Waiting for facilitator to start the session.";
     }
-
     if (sessionStatus === "completed") {
-      return {
-        title: "Session complete",
-        detail: "Review the final leaderboard and decision timeline below."
-      };
+      return "Session completed. Review final leaderboard and timeline.";
     }
-
-    if (!currentRound) {
-      return {
-        title: "No round context available",
-        detail: "Realtime may still be syncing. Keep this page open."
-      };
-    }
-
     if (!hasSubmittedCurrentRound) {
-      return {
-        title: "Step 3: Submit your strategic decision",
-        detail: "Set budget split, focus action, and risk posture, then submit."
-      };
+      return "Submit your strategy decision for this round.";
     }
-
-    if (roundPhase === "decision") {
-      return {
-        title: "Decision submitted",
-        detail: "You can update your decision or prepare interactions while waiting for phase change."
-      };
-    }
-
-    if (roundPhase === "interaction" && incomingProposals.length > 0) {
-      return {
-        title: "Step 5: Respond to incoming proposals",
-        detail: "Accept or reject pending proposals targeting your company."
-      };
-    }
-
     if (roundPhase === "interaction") {
-      return {
-        title: "Step 4: Manage interactions",
-        detail: "Send proposals to peers or wait for facilitator round resolution."
-      };
+      return "Use Message Center to send/respond to proposals before resolve.";
+    }
+    return "Awaiting facilitator phase updates.";
+  }, [hasSubmittedCurrentRound, myCompany, roundPhase, sessionStatus]);
+
+  const budgetTotal =
+    budget.growth + budget.people + budget.resilience + budget.brand + budget.compliance;
+
+  const refreshMessageFeed = useCallback(async () => {
+    if (!myCompany) {
+      setMessageFeed(null);
+      return;
     }
 
-    return {
-      title: "Awaiting round transition",
-      detail: "The round is resolved; watch for the next round opening."
-    };
-  }, [
-    currentRound,
-    hasSubmittedCurrentRound,
-    incomingProposals.length,
-    myCompany,
-    roundPhase,
-    sessionStatus
-  ]);
+    setMessageLoading(true);
+    try {
+      const params = new URLSearchParams({
+        company_id: myCompany.id,
+        direction: "all",
+        limit: "500"
+      });
+      const feed = await fetchApi<MessageCenterFeed>(
+        `/api/sessions/${sessionRef}/messages?${params.toString()}`
+      );
+      setMessageFeed(feed);
+    } catch (feedError) {
+      setError(feedError instanceof Error ? feedError.message : "Unable to load message center");
+    } finally {
+      setMessageLoading(false);
+    }
+  }, [myCompany, sessionRef]);
+
+  useEffect(() => {
+    void refreshMessageFeed();
+  }, [refreshMessageFeed, state]);
+
+  const inboxMessages = useMemo(
+    () => (messageFeed?.messages || []).filter((message) => message.direction === "inbox"),
+    [messageFeed]
+  );
+
+  const outboxMessages = useMemo(
+    () => (messageFeed?.messages || []).filter((message) => message.direction === "outbox"),
+    [messageFeed]
+  );
+
+  const pendingInboxCount = useMemo(
+    () => inboxMessages.filter((message) => message.status === "pending").length,
+    [inboxMessages]
+  );
 
   useEffect(() => {
     if (!state || !myCompany) {
@@ -356,25 +373,16 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
       session_status: state.session.status,
       round_number: state.session.current_round_number,
       round_phase: state.current_round?.phase,
-      next_action: nextAction.title,
+      next_action: nextAction,
       decision_submitted_this_round: hasSubmittedCurrentRound,
       decision_window_open: decisionWindowOpen,
       interaction_window_open: interactionWindowOpen,
+      pending_inbox_count: pendingInboxCount,
       player_company: {
         id: myCompany.id,
         name: myCompany.name,
         metrics: myCompany.metrics
-      },
-      current_event: state.current_event
-        ? {
-            category: state.current_event.event.category,
-            severity: state.current_event.event.severity,
-            title: state.current_event.event.title
-          }
-        : null,
-      pending_interactions_for_player: state.pending_interactions.filter(
-        (proposal) => proposal.target_company_id === myCompany.id
-      )
+      }
     };
 
     (window as Window & { render_game_to_text?: () => string }).render_game_to_text =
@@ -389,7 +397,8 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
     interactionWindowOpen,
     load,
     myCompany,
-    nextAction.title,
+    nextAction,
+    pendingInboxCount,
     state
   ]);
 
@@ -428,15 +437,16 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
         })
       });
       persistSubmittedRound(state.current_round.round_number);
-      setStatusMessage("Decision submitted. You can re-submit any time before resolve.");
+      setStatusMessage("Decision submitted. You can update it before resolve.");
       await load();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Unable to submit decision");
     }
   }
 
-  async function createInteraction(event: FormEvent<HTMLFormElement>): Promise<void> {
+  async function sendInteraction(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+
     if (!state?.current_round || !myCompany || !targetCompanyId) {
       setError(interactionBlockedReason || "Interaction requires an active round and target company");
       return;
@@ -456,14 +466,18 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
           target_company_id: targetCompanyId,
           type: interactionType,
           terms: {
-            intensity: interactionIntensity
+            intensity: interactionIntensity,
+            message: interactionMessage.trim() || undefined
           }
         })
       });
+
       setStatusMessage("Interaction proposal sent.");
-      await load();
-    } catch (proposalError) {
-      setError(proposalError instanceof Error ? proposalError.message : "Unable to send proposal");
+      setInteractionMessage("");
+      setDrawerTab("outbox");
+      await Promise.all([load(), refreshMessageFeed()]);
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Unable to send proposal");
     }
   }
 
@@ -484,8 +498,9 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
           response
         })
       });
+
       setStatusMessage(`Proposal ${response}ed.`);
-      await load();
+      await Promise.all([load(), refreshMessageFeed()]);
     } catch (respondError) {
       setError(respondError instanceof Error ? respondError.message : "Unable to respond to proposal");
     }
@@ -499,133 +514,159 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
     );
   }
 
+  const session = state.session;
+  const playerValue = myLeaderboardEntry?.total_score ?? (mySeries?.points.at(-1)?.total_score ?? null);
+
+  const snapshotItems = [
+    {
+      label: "Decision",
+      value: hasSubmittedCurrentRound ? "Submitted" : "Pending",
+      tone: hasSubmittedCurrentRound ? "good" : "warn"
+    },
+    {
+      label: "Inbox Pending",
+      value: String(pendingInboxCount),
+      tone: pendingInboxCount > 0 ? "warn" : "default"
+    },
+    {
+      label: "Round Phase",
+      value: formatPhase(roundPhase),
+      tone: "default"
+    },
+    {
+      label: "Current Rank",
+      value: myLeaderboardEntry ? `#${myLeaderboardEntry.rank}` : "N/A",
+      tone: "default"
+    }
+  ] as const;
+
   return (
-    <main className="page">
-      <section className="hero">
-        <h1>Player Dashboard</h1>
-        <p>
-          Session <b>{state.session.code}</b> | Round {state.session.current_round_number} of{" "}
-          {state.session.total_rounds}
-        </p>
-        <div className="inline">
-          <span className={`badge status-${state.session.status}`}>{state.session.status.toUpperCase()}</span>
-          <span className="badge">
-            Realtime:{" "}
-            {realtime.status === "live"
-              ? "Live"
-              : realtime.status === "connecting"
-                ? "Connecting"
-                : realtime.backoffMs
-                  ? `Offline (retrying in ${Math.ceil(realtime.backoffMs / 1000)}s)`
-                  : "Offline"}
-          </span>
-          {currentRound ? <span className="badge">Phase: {formatPhase(currentRound.phase)}</span> : null}
+    <main className="page dashboard-shell">
+      <section className="hero hero-dashboard">
+        <div className="hero-main">
+          <h1>Player Dashboard</h1>
+          <p>
+            Session <b>{session.code}</b> | Round {session.current_round_number} of {session.total_rounds}
+          </p>
+          <p className="small hero-note">Next action: {nextAction}</p>
+        </div>
+        <div className="hero-tools">
+          <div className="inline">
+            <span className={`badge status-${session.status}`}>{session.status.toUpperCase()}</span>
+            <span className="badge">Phase: {formatPhase(roundPhase)}</span>
+            <span className="badge">
+              Realtime:{" "}
+              {realtime.status === "live"
+                ? "Live"
+                : realtime.status === "connecting"
+                  ? "Connecting"
+                  : realtime.backoffMs
+                    ? `Offline (${Math.ceil(realtime.backoffMs / 1000)}s)`
+                    : "Offline"}
+            </span>
+          </div>
+          <button className="mail-button" onClick={() => setDrawerOpen(true)}>
+            {"\u2709"} Message Center {pendingInboxCount > 0 ? `(${pendingInboxCount})` : ""}
+          </button>
         </div>
       </section>
 
-      <section className="card flow-guide">
-        <h2>Round Guide</h2>
-        <p>
-          <b>{nextAction.title}</b>
-        </p>
-        <p className="small">{nextAction.detail}</p>
-        <div className="flow-steps">
-          <div className={`flow-step ${myCompany ? "done" : "current"}`}>
-            <p className="flow-step-title">Step 1: Confirm identity</p>
-            <p className="small">
-              {myCompany ? `Connected as ${myCompany.name}.` : "Enter your player ID to unlock actions."}
-            </p>
-          </div>
-          <div className={`flow-step ${hasSubmittedCurrentRound ? "done" : "current"}`}>
-            <p className="flow-step-title">Step 2: Submit decision</p>
-            <p className="small">
-              {hasSubmittedCurrentRound
-                ? "Decision is in for this round."
-                : "Set budget, focus action, and risk posture."}
-            </p>
-          </div>
-          <div className={`flow-step ${roundPhase === "interaction" ? "current" : ""}`}>
-            <p className="flow-step-title">Step 3: Handle interactions</p>
-            <p className="small">
-              {roundPhase === "interaction"
-                ? "Interaction phase is open."
-                : "You can still propose in decision phase, but this is typically used during interaction phase."}
-            </p>
-          </div>
-          <div className={`flow-step ${state.session.status === "completed" ? "done" : ""}`}>
-            <p className="flow-step-title">Step 4: Review outcomes</p>
-            <p className="small">
-              {state.session.status === "completed"
-                ? "Session complete. Review leaderboard and timeline."
-                : "Wait for facilitator resolve, then review updates."}
-            </p>
-          </div>
-        </div>
+      <section className="priority-grid">
+        <RoundSnapshotCard
+          title="Round Snapshot"
+          subtitle={`Round ${session.current_round_number}`}
+          items={snapshotItems.map((item) => ({
+            label: item.label,
+            value: item.value,
+            tone: item.tone
+          }))}
+          footer={<p className="small">Facilitator controls phase changes and resolve timing.</p>}
+        />
+
+        <BreakingNewsPanel event={state.current_event} roundNumber={currentRoundNumber} />
       </section>
 
-      <section className="grid">
-        <article className="card">
-          <h2>Step 1 - Your Identity</h2>
-          <label>
-            Player ID
-            <input
-              value={playerId}
-              onChange={(event) => setPlayerId(event.target.value)}
-              placeholder="Paste your player ID if not in URL"
-            />
-          </label>
-          <p className="small">Player ID is included in the join redirect URL.</p>
+      <section className="hierarchy-grid two-col">
+        <article className="card assets-card">
+          <div className="card-head">
+            <h3>Company Assets and Current Value</h3>
+            <p className="small">Identity is managed from Message Center settings.</p>
+          </div>
 
           {myCompany ? (
-            <div>
-              <p>
-                <b>{myCompany.name}</b>
+            <>
+              <p className="assets-name">{myCompany.name}</p>
+              <p className="assets-value">
+                Value <b>{playerValue !== null ? playerValue.toFixed(2) : "N/A"}</b>
               </p>
-              <p className="small good-text">Identity verified. Actions are now linked to your company.</p>
-              <div className="metrics-grid">
+              <div className="metrics-grid compact">
                 {Object.entries(myCompany.metrics).map(([key, value]) => (
                   <div className="metric" key={key}>
-                    <span className="small">{key}</span>
+                    <span className="small">{formatMetricLabel(key)}</span>
                     <b>{value.toFixed(1)}</b>
                   </div>
                 ))}
               </div>
-            </div>
-          ) : (
-            <p className="small">Enter your player ID to unlock decision and interaction controls.</p>
-          )}
-        </article>
-
-        <article className="card">
-          <h2>Step 2 - Round Context</h2>
-          {state.current_event ? (
-            <>
-              <p>
-                <b>{state.current_event.event.title}</b>
-              </p>
-              <p className="small">
-                {state.current_event.event.category} / {state.current_event.event.severity}
-              </p>
-              <p>{state.current_event.event.narrative}</p>
             </>
           ) : (
-            <p className="small">No event shown yet. Event appears after facilitator injects or round resolves.</p>
+            <p className="small">Open Message Center and use Change identity to connect your company.</p>
           )}
-          <p className="small">
-            Session status: <b>{state.session.status}</b> | Current phase: <b>{formatPhase(roundPhase)}</b>
-          </p>
         </article>
+
+        <CompanyPerformanceChart
+          series={mySeries}
+          metric={selectedMetric}
+          onMetricChange={setSelectedMetric}
+        />
       </section>
 
-      <section className="grid">
+      <section className="hierarchy-grid two-col">
         <article className="card">
-          <h3>Step 3 - Submit Strategic Decision</h3>
+          <div className="card-head">
+            <h3>Leaderboard</h3>
+            <p className="small">Company value is based on total score each round.</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Company</th>
+                <th>Total Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(results?.leaderboard || []).map((entry) => {
+                const company = state.companies.find((item) => item.id === entry.company_id);
+                return (
+                  <tr key={entry.company_id}>
+                    <td>#{entry.rank}</td>
+                    <td>{company?.name || entry.company_id}</td>
+                    <td>{entry.total_score.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </article>
+
+        <LeaderboardComparisonChart
+          series={results?.performance_series || []}
+          leaderboard={results?.leaderboard || []}
+        />
+      </section>
+
+      <section className="hierarchy-grid two-col action-grid">
+        <article className="card">
+          <div className="card-head">
+            <h3>Strategy Decision</h3>
+            <p className="small">Budget totals are normalized to 100% by the resolver.</p>
+          </div>
           <form onSubmit={submitDecision}>
             <fieldset className="form-fieldset" disabled={Boolean(decisionBlockedReason)}>
-              <div className="metrics-grid">
+              <div className="metrics-grid compact">
                 {Object.entries(budget).map(([key, value]) => (
                   <label key={key}>
-                    {key}
+                    {formatMetricLabel(key)}
                     <input
                       type="number"
                       min={0}
@@ -641,6 +682,7 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                   </label>
                 ))}
               </div>
+
               <label>
                 Focus action
                 <select
@@ -654,6 +696,7 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                   <option value="brand_campaign">Brand campaign</option>
                 </select>
               </label>
+
               <label>
                 Risk posture
                 <select
@@ -665,179 +708,47 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                   <option value="aggressive">Aggressive</option>
                 </select>
               </label>
+
               <button type="submit">
                 {hasSubmittedCurrentRound ? "Update decision" : "Submit decision"}
               </button>
             </fieldset>
           </form>
-          <p className="small">
-            Budget total: <b>{budgetTotal}%</b>. The resolver normalizes totals to 100%.
-          </p>
-          <p className={`small ${hasSubmittedCurrentRound ? "good-text" : ""}`}>
-            {hasSubmittedCurrentRound
-              ? "Submitted for this round. Re-submit any time before facilitator resolve."
-              : "Not yet submitted for this round."}
-          </p>
+          <p className="small">Budget total: {budgetTotal}%</p>
           {decisionBlockedReason ? <p className="small">Locked: {decisionBlockedReason}</p> : null}
         </article>
 
         <article className="card">
-          <h3>Step 4 - Propose Company Interaction</h3>
-          {roundPhase === "decision" ? (
-            <p className="small">
-              Interaction proposals are accepted now, but teams usually coordinate this in interaction phase.
-            </p>
-          ) : null}
-          <form onSubmit={createInteraction}>
-            <fieldset className="form-fieldset" disabled={Boolean(interactionBlockedReason)}>
-              <label>
-                Target company
-                <select
-                  value={targetCompanyId}
-                  onChange={(event) => setTargetCompanyId(event.target.value)}
-                  required
-                >
-                  <option value="">Select company</option>
-                  {otherCompanies.map((company) => (
-                    <option key={company.id} value={company.id}>
-                      {company.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Interaction type
-                <select
-                  value={interactionType}
-                  onChange={(event) => setInteractionType(event.target.value as typeof interactionType)}
-                >
-                  <option value="trade_contract">Trade contract</option>
-                  <option value="joint_venture">Joint venture</option>
-                  <option value="price_war">Price war</option>
-                  <option value="talent_poach">Talent poach</option>
-                  <option value="reputation_challenge">Reputation challenge</option>
-                </select>
-              </label>
-              <label>
-                Intensity (10-100)
-                <input
-                  type="number"
-                  min={10}
-                  max={100}
-                  value={interactionIntensity}
-                  onChange={(event) => setInteractionIntensity(Number(event.target.value))}
-                />
-              </label>
-              <button type="submit">Send proposal</button>
-            </fieldset>
-          </form>
-          {interactionBlockedReason ? <p className="small">Locked: {interactionBlockedReason}</p> : null}
-        </article>
-      </section>
-
-      <section className="card">
-        <h3>Step 5 - Incoming Proposals</h3>
-        {incomingProposals.length === 0 ? (
-          <p className="small">No pending proposals for your company.</p>
-        ) : (
-          incomingProposals.map((proposal) => {
-            const proposer = state.companies.find((company) => company.id === proposal.proposer_company_id);
-            return (
-              <div className="notice" key={proposal.id}>
-                <p>
-                  <b>{interactionTypeLabels[proposal.type]}</b> from{" "}
-                  {proposer?.name || proposal.proposer_company_id} (intensity {proposal.terms.intensity})
-                </p>
-                <p className="small">Expires at {formatShortTime(proposal.expires_at)}</p>
-                <div className="inline">
-                  <button
-                    disabled={Boolean(responseBlockedReason)}
-                    onClick={() => void respondToProposal(proposal.id, "accept")}
-                  >
-                    Accept
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={Boolean(responseBlockedReason)}
-                    onClick={() => void respondToProposal(proposal.id, "reject")}
-                  >
-                    Reject
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        )}
-        {responseBlockedReason ? <p className="small">Locked: {responseBlockedReason}</p> : null}
-      </section>
-
-      <section className="grid">
-        <article className="card">
-          <h3>Round Snapshot</h3>
-          <div className="metrics-grid">
+          <div className="card-head">
+            <h3>Message Center</h3>
+            <p className="small">Use inbox/outbox/compose to manage all interaction proposals.</p>
+          </div>
+          <div className="metrics-grid compact">
             <div className="metric">
-              <span className="small">Decision status</span>
-              <b>{hasSubmittedCurrentRound ? "Submitted" : "Pending"}</b>
+              <span className="small">Inbox</span>
+              <b>{inboxMessages.length}</b>
             </div>
             <div className="metric">
-              <span className="small">Incoming proposals</span>
-              <b>{incomingProposals.length}</b>
+              <span className="small">Outbox</span>
+              <b>{outboxMessages.length}</b>
             </div>
             <div className="metric">
-              <span className="small">Current phase</span>
-              <b>{formatPhase(roundPhase)}</b>
-            </div>
-            <div className="metric">
-              <span className="small">Your rank</span>
-              <b>{myLeaderboardEntry ? `#${myLeaderboardEntry.rank}` : "N/A"}</b>
+              <span className="small">Pending Inbox</span>
+              <b>{pendingInboxCount}</b>
             </div>
           </div>
-        </article>
-
-        <article className="card">
-          <h3>What Happens Next</h3>
-          <p className="small">
-            Facilitator controls phase changes and round resolution. Keep this page open for realtime updates.
-          </p>
-          <p className="small">
-            Once round resolves, your metrics and leaderboard update automatically. Final timeline appears when the
-            session is completed.
-          </p>
+          <button onClick={() => setDrawerOpen(true)}>Open Message Center</button>
         </article>
       </section>
 
-      <section className="card">
-        <h3>Leaderboard</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Company</th>
-              <th>Total Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(results?.leaderboard || []).map((entry) => {
-              const company = state.companies.find((item) => item.id === entry.company_id);
-              return (
-                <tr key={entry.company_id}>
-                  <td>#{entry.rank}</td>
-                  <td>{company?.name || entry.company_id}</td>
-                  <td>{entry.total_score}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </section>
-
-      {state.session.status === "completed" ? (
+      {session.status === "completed" ? (
         <section className="card">
           <h3>Decision Timeline</h3>
           {(results?.decision_timeline || []).map((entry) => (
             <div className="notice" key={entry.round_number}>
               <p>
-                <b>Round {entry.round_number}</b> - {entry.event.title} ({entry.event.category}, {entry.event.severity})
+                <b>Round {entry.round_number}</b> - {entry.event.title} ({entry.event.category},{" "}
+                {entry.event.severity})
               </p>
               <p className="small">{entry.event.narrative}</p>
               <p className="small">
@@ -850,6 +761,164 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
 
       {statusMessage ? <p className="notice">{statusMessage}</p> : null}
       {error ? <p className="error">{error}</p> : null}
+
+      <MessageCenterDrawer
+        open={drawerOpen}
+        title="Session Message Center"
+        subtitle={myCompany ? myCompany.name : "Identity not connected"}
+        activeTabId={drawerTab}
+        onTabChange={(tabId) => setDrawerTab(tabId as typeof drawerTab)}
+        onClose={() => setDrawerOpen(false)}
+        tabs={[
+          {
+            id: "inbox",
+            label: "Inbox",
+            count: inboxMessages.length,
+            content: (
+              <div className="message-list">
+                {messageLoading ? <p className="small">Loading inbox...</p> : null}
+                {inboxMessages.length === 0 ? <p className="small">No inbox messages.</p> : null}
+                {inboxMessages.map((message) => (
+                  <article className="message-item" key={message.proposal_id}>
+                    <div className="message-head">
+                      <p>
+                        <b>{interactionTypeLabels[message.type]}</b> from {message.proposer_company_name}
+                      </p>
+                      <span className={`badge status-${message.status}`}>{message.status.toUpperCase()}</span>
+                    </div>
+                    <p className="small">Round {message.round_number ?? "?"}</p>
+                    <p className="small">Intensity: {message.terms.intensity}</p>
+                    {message.terms.message ? <p className="small">&quot;{message.terms.message}&quot;</p> : null}
+                    <p className="small">Updated {formatDateTime(message.updated_at)}</p>
+                    {message.status === "pending" ? (
+                      <div className="inline">
+                        <button
+                          type="button"
+                          disabled={Boolean(responseBlockedReason)}
+                          onClick={() => void respondToProposal(message.proposal_id, "accept")}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={Boolean(responseBlockedReason)}
+                          onClick={() => void respondToProposal(message.proposal_id, "reject")}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+                {responseBlockedReason ? <p className="small">Locked: {responseBlockedReason}</p> : null}
+              </div>
+            )
+          },
+          {
+            id: "outbox",
+            label: "Outbox",
+            count: outboxMessages.length,
+            content: (
+              <div className="message-list">
+                {messageLoading ? <p className="small">Loading outbox...</p> : null}
+                {outboxMessages.length === 0 ? <p className="small">No outbox messages.</p> : null}
+                {outboxMessages.map((message) => (
+                  <article className="message-item" key={message.proposal_id}>
+                    <div className="message-head">
+                      <p>
+                        <b>{interactionTypeLabels[message.type]}</b> to {message.target_company_name}
+                      </p>
+                      <span className={`badge status-${message.status}`}>{message.status.toUpperCase()}</span>
+                    </div>
+                    <p className="small">Round {message.round_number ?? "?"}</p>
+                    <p className="small">Intensity: {message.terms.intensity}</p>
+                    {message.terms.message ? <p className="small">&quot;{message.terms.message}&quot;</p> : null}
+                    <p className="small">Updated {formatDateTime(message.updated_at)}</p>
+                  </article>
+                ))}
+              </div>
+            )
+          },
+          {
+            id: "compose",
+            label: "Compose",
+            content: (
+              <form onSubmit={sendInteraction} className="drawer-form">
+                <fieldset className="form-fieldset" disabled={Boolean(interactionBlockedReason)}>
+                  <label>
+                    Target company
+                    <select
+                      value={targetCompanyId}
+                      onChange={(event) => setTargetCompanyId(event.target.value)}
+                      required
+                    >
+                      <option value="">Select company</option>
+                      {otherCompanies.map((company: Company) => (
+                        <option key={company.id} value={company.id}>
+                          {company.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Interaction type
+                    <select
+                      value={interactionType}
+                      onChange={(event) => setInteractionType(event.target.value as InteractionType)}
+                    >
+                      <option value="trade_contract">Trade contract</option>
+                      <option value="joint_venture">Joint venture</option>
+                      <option value="price_war">Price war</option>
+                      <option value="talent_poach">Talent poach</option>
+                      <option value="reputation_challenge">Reputation challenge</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Intensity (10-100)
+                    <input
+                      type="number"
+                      min={10}
+                      max={100}
+                      value={interactionIntensity}
+                      onChange={(event) => setInteractionIntensity(Number(event.target.value))}
+                    />
+                  </label>
+
+                  <label>
+                    Message (optional)
+                    <textarea
+                      rows={3}
+                      value={interactionMessage}
+                      onChange={(event) => setInteractionMessage(event.target.value)}
+                      placeholder="What terms are you proposing?"
+                    />
+                  </label>
+
+                  <button type="submit">Send proposal</button>
+                </fieldset>
+                {interactionBlockedReason ? <p className="small">Locked: {interactionBlockedReason}</p> : null}
+              </form>
+            )
+          }
+        ]}
+        footer={
+          <details className="identity-disclosure">
+            <summary>Change identity / recovery</summary>
+            <label>
+              Player ID
+              <input
+                value={playerId}
+                onChange={(event) => setPlayerId(event.target.value)}
+                placeholder="Paste player ID from join redirect"
+              />
+            </label>
+            <p className="small">Use only if your URL player ID is missing or incorrect.</p>
+          </details>
+        }
+      />
     </main>
   );
 }

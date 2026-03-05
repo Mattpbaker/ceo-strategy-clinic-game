@@ -6,9 +6,12 @@ import {
 } from "@/lib/facilitator-auth";
 import { getSupabaseGameStore, isSupabaseConfigured } from "@/lib/store-supabase";
 import {
+  CompanyPerformanceSeries,
   DecisionPayload,
   DecisionRecord,
   InteractionProposal,
+  InteractionStatus,
+  MessageCenterFeed,
   Session,
   SessionResults,
   SessionState
@@ -60,6 +63,16 @@ export interface RuntimeGameStore {
     session: Session;
   }>;
   verifyFacilitatorToken(sessionRef: string, token: string): Promise<boolean>;
+  listInteractionMessages(
+    sessionRef: string,
+    options?: {
+      company_id?: string;
+      direction?: "inbox" | "outbox" | "all";
+      status?: InteractionStatus;
+      limit?: number;
+    }
+  ): Promise<MessageCenterFeed>;
+  getPerformanceSeries(sessionRef: string): Promise<CompanyPerformanceSeries[]>;
   getSessionState(sessionRef: string): Promise<SessionState>;
   getResults(sessionRef: string): Promise<SessionResults>;
 }
@@ -161,6 +174,22 @@ class InMemoryAsyncStoreAdapter implements RuntimeGameStore {
       this.facilitatorTokenHashes.get(sessionRef) ??
       this.facilitatorCodeHashes.get(sessionRef.toUpperCase());
     return verifyHashedFacilitatorToken(token, expected);
+  }
+
+  async listInteractionMessages(
+    sessionRef: string,
+    options?: {
+      company_id?: string;
+      direction?: "inbox" | "outbox" | "all";
+      status?: InteractionStatus;
+      limit?: number;
+    }
+  ): Promise<MessageCenterFeed> {
+    return getGameStore().listInteractionMessages(sessionRef, options);
+  }
+
+  async getPerformanceSeries(sessionRef: string): Promise<CompanyPerformanceSeries[]> {
+    return getGameStore().getPerformanceSeries(sessionRef);
   }
 
   async getSessionState(sessionRef: string): Promise<SessionState> {

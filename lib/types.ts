@@ -183,6 +183,17 @@ export interface ScoreSnapshot {
   created_at: string;
 }
 
+export interface CompanyMetricSnapshot {
+  id: string;
+  session_id: string;
+  round_id: string;
+  round_number: number;
+  company_id: string;
+  metrics: CompanyMetrics;
+  total_score: number;
+  created_at: string;
+}
+
 export interface AuditLogEntry {
   id: string;
   session_id: string;
@@ -218,6 +229,53 @@ export interface RoundResolution {
   new_risks: string[];
 }
 
+export interface CompanyRoundSeriesPoint {
+  round_number: number;
+  total_score: number;
+  metrics: CompanyMetrics;
+  created_at: string;
+}
+
+export interface CompanyPerformanceSeries {
+  company_id: string;
+  company_name: string;
+  history_start_round: number | null;
+  points: CompanyRoundSeriesPoint[];
+}
+
+export type MessageDirection = "inbox" | "outbox" | "neutral";
+
+export interface MessageCenterItem {
+  proposal_id: string;
+  session_id: string;
+  round_id: string;
+  round_number: number | null;
+  proposer_company_id: string;
+  proposer_company_name: string;
+  target_company_id: string;
+  target_company_name: string;
+  type: InteractionType;
+  terms: InteractionTerms;
+  status: InteractionStatus;
+  direction: MessageDirection;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MessageCenterFeed {
+  session_id: string;
+  total: number;
+  scope: {
+    company_id?: string;
+    direction: "inbox" | "outbox" | "all";
+    status?: InteractionStatus;
+    limit: number;
+  };
+  counts: Record<InteractionStatus, number>;
+  messages: MessageCenterItem[];
+}
+
 export interface SessionState {
   session: Session;
   players: Player[];
@@ -234,4 +292,5 @@ export interface SessionResults {
   session_id: string;
   leaderboard: ScoreBreakdown[];
   decision_timeline: TimelineEntry[];
+  performance_series: CompanyPerformanceSeries[];
 }
