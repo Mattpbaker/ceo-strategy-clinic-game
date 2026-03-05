@@ -77,6 +77,38 @@ a {
   margin: 0 0 0.75rem;
 }
 
+.flow-guide p {
+  margin: 0.3rem 0;
+}
+
+.flow-steps {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.7rem;
+}
+
+.flow-step {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  background: #fff;
+}
+
+.flow-step.current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.flow-step.done {
+  border-color: #b9e2c8;
+  background: #edf8f1;
+}
+
+.flow-step-title {
+  margin: 0;
+  font-weight: 700;
+}
+
 label {
   display: grid;
   gap: 0.3rem;
@@ -130,6 +162,13 @@ button:disabled {
   opacity: 0.65;
   cursor: not-allowed;
   transform: none;
+}
+
+.form-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
 }
 
 .badge {
@@ -211,6 +250,10 @@ td {
 .small {
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+.good-text {
+  color: var(--good);
 }
 
 @media (max-width: 720px) {

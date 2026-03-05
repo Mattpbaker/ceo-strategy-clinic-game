@@ -90,3 +90,26 @@ Original prompt: PLEASE IMPLEMENT THIS PLAN: CEO Strategy Clinic Game MVP Plan (
 - Validation:
   - `npm test` passed (5 files, 8 tests)
   - `npm run build` passed
+
+## Player Guided Flow UX Pass (2026-03-05)
+- Reworked `components/player-dashboard.tsx` into a step-based player journey with explicit section headings:
+  - Step 1 identity, Step 2 round context, Step 3 decisions, Step 4 interactions, Step 5 incoming proposals.
+- Added a top-level `Round Guide` block that surfaces the current next action and flow progress.
+- Added action gating with user-facing lock reasons for decision submit, interaction proposal, and proposal response actions.
+- Added per-round local decision submission tracking (stored by session+player in localStorage) to show "submitted/pending" status and support re-submit messaging.
+- Added budget total helper text to explain normalization behavior and reduce player confusion.
+- Added clearer recap blocks (`Round Snapshot`, `What Happens Next`) for in-round orientation.
+- Enhanced `render_game_to_text` payload with guidance-oriented state (`next_action`, decision/interactions availability, decision submitted status).
+- Added supporting UI styles in `app/globals.css` for guide steps, fieldsets, and positive status text.
+- Validation:
+  - `npm test` passed (5 files, 8 tests).
+  - `npm run build` passed (typecheck + route generation).
+- Playwright skill loop (required by `develop-web-game`) executed via:
+  - `node $WEB_GAME_CLIENT --url http://localhost:4173/session/LE9LRA?playerId=... --actions-file $WEB_GAME_ACTIONS --iterations 2 --pause-ms 250 --screenshot-dir output/web-game/player-guide`
+  - `node $WEB_GAME_CLIENT --url http://localhost:4173/session/QDPVWK?playerId=... --actions-file $WEB_GAME_ACTIONS --iterations 2 --pause-ms 250 --screenshot-dir output/web-game/player-guide-running`
+- Artifacts reviewed:
+  - `output/web-game/player-guide/shot-0.png`, `shot-1.png`, `state-0.json`, `state-1.json`
+  - `output/web-game/player-guide-running/shot-0.png`, `shot-1.png`, `state-0.json`, `state-1.json`
+- Observed runtime state from `render_game_to_text` confirms guidance fields are exposed:
+  - `next_action`, `decision_submitted_this_round`, `decision_window_open`, `interaction_window_open`.
+- No `errors-*.json` files were generated in either Playwright run.

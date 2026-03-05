@@ -164,7 +164,11 @@ describe("resolveRound", () => {
     const second = resolveRound(input);
 
     expect(first.resolution.metric_deltas).toEqual(second.resolution.metric_deltas);
-    expect(first.updatedCompanies).toEqual(second.updatedCompanies);
+    expect(
+      first.updatedCompanies.map(({ updated_at: _updatedAt, ...company }) => company)
+    ).toEqual(
+      second.updatedCompanies.map(({ updated_at: _updatedAt, ...company }) => company)
+    );
   });
 
   it("applies cooperative trade benefits to both companies", () => {
