@@ -1,6 +1,6 @@
 "use client";
 
-import { Shield, Crosshair } from "lucide-react";
+import { Shield, Crosshair, Monitor } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
@@ -19,6 +19,7 @@ export default function HomePage(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [displayCode, setDisplayCode] = useState("");
 
   async function createSession(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -94,6 +95,12 @@ export default function HomePage(): React.ReactElement {
     } finally {
       setJoining(false);
     }
+  }
+
+  function openDisplay(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const code = displayCode.trim().toUpperCase();
+    router.push(`/display/${code}`);
   }
 
   return (
@@ -187,6 +194,36 @@ export default function HomePage(): React.ReactElement {
                     {joining ? "Engaging..." : "Enter Simulation"}
                   </button>
                 </form>
+              </article>
+
+              {/* Display card */}
+              <article className="landing-card landing-card-display">
+                <div className="landing-card-header">
+                  <Monitor size={18} color="#c084fc" />
+                  <span className="landing-card-label" style={{ color: "#c084fc", borderColor: "rgba(192,132,252,0.3)" }}>
+                    War Room Display
+                  </span>
+                </div>
+                <h2 className="landing-card-title">Open Display</h2>
+                <form onSubmit={openDisplay}>
+                  <label htmlFor="displayCode">
+                    Session code
+                    <input
+                      id="displayCode"
+                      value={displayCode}
+                      onChange={(event) => setDisplayCode(event.target.value.toUpperCase())}
+                      placeholder="ABC123"
+                      required
+                      style={{ textTransform: "uppercase", letterSpacing: "0.2em" }}
+                    />
+                  </label>
+                  <button type="submit" className="landing-btn-display">
+                    Open Display
+                  </button>
+                </form>
+                <p className="small" style={{ marginTop: "0.7rem" }}>
+                  Projector view: live leaderboard and event feed.
+                </p>
               </article>
             </div>
 
@@ -292,6 +329,26 @@ export default function HomePage(): React.ReactElement {
           max-width: 720px;
         }
 
+        .landing-card-display:hover {
+          border-color: rgba(192, 132, 252, 0.4);
+          box-shadow: 0 0 30px rgba(192, 132, 252, 0.08);
+        }
+
+        .landing-btn-display {
+          width: 100%;
+          padding: 0.65rem 1rem;
+          font-size: 0.8rem;
+          letter-spacing: 0.14em;
+          border-color: #c084fc;
+          color: #c084fc;
+          background: rgba(192, 132, 252, 0.08);
+        }
+
+        .landing-btn-display:hover {
+          background: rgba(192, 132, 252, 0.16);
+          box-shadow: 0 0 16px rgba(192, 132, 252, 0.2);
+        }
+
         .landing-card {
           background: rgba(15, 21, 32, 0.9);
           border: 1px solid var(--line-hard);
@@ -373,6 +430,7 @@ export default function HomePage(): React.ReactElement {
             padding: 2rem 1rem;
           }
         }
+
       `}</style>
     </main>
   );
