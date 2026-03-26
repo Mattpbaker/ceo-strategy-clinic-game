@@ -413,6 +413,7 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
           })
         });
         setEventEffects(emptyEffects);
+        setSelectedPresetId(null);
       },
       matcher: (nextState) =>
         nextState.current_event?.round_id === requestedRoundId &&

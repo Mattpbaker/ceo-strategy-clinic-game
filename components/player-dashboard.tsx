@@ -1112,7 +1112,7 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
         sessionStatus={sessionStatus}
         role="player"
         decisionsSubmitted={state?.decisions_submitted}
-        totalPlayers={state?.companies.length}
+        totalPlayers={state?.players.length}
       />
 
       <section className="priority-grid">
