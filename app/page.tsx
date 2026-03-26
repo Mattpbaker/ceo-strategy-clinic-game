@@ -100,6 +100,7 @@ export default function HomePage(): React.ReactElement {
   function openDisplay(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const code = displayCode.trim().toUpperCase();
+    if (!code) return;
     router.push(`/display/${code}`);
   }
 
@@ -369,6 +370,10 @@ export default function HomePage(): React.ReactElement {
         .landing-card-player:hover {
           border-color: rgba(0, 212, 255, 0.55);
           box-shadow: 0 0 40px rgba(0, 212, 255, 0.18), inset 0 1px 0 rgba(0, 212, 255, 0.15);
+        }
+
+        .landing-card-display {
+          grid-column: 1 / -1;
         }
 
         .landing-card-header {
