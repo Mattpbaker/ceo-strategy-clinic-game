@@ -1,5 +1,4 @@
 // components/ui/phase-banner.tsx
-"use client";
 
 import { RoundPhase, SessionStatus } from "@/lib/types";
 
@@ -118,6 +117,8 @@ export function PhaseBanner({ phase, sessionStatus, role, decisionsSubmitted, to
         <span style={{ color: "var(--muted)", fontSize: "0.65rem", letterSpacing: "0.08em" }}>Phase</span>
         <div style={{ display: "flex", alignItems: "center" }}>
           {PHASES.map((step, i) => {
+            // When the session is completed, show all stepper steps as if resolved (final state).
+            // The game engine guarantees phase is "resolved" at session completion.
             const state = getStepState(step, sessionStatus === "completed" ? "resolved" : phase);
             const isFirst = i === 0;
             const isLast = i === PHASES.length - 1;
