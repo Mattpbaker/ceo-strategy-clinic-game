@@ -1,6 +1,6 @@
 "use client";
 
-import { Shield, Crosshair, Monitor } from "lucide-react";
+import { Shield, Crosshair, Monitor, BookOpen, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
@@ -20,6 +20,7 @@ export default function HomePage(): React.ReactElement {
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [displayCode, setDisplayCode] = useState("");
+  const [showBriefing, setShowBriefing] = useState(false);
 
   async function createSession(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -131,6 +132,17 @@ export default function HomePage(): React.ReactElement {
               Lead a company through world events. Outmaneuver rivals. Build something that lasts.
             </p>
 
+            <div>
+              <button
+                type="button"
+                className="landing-btn-briefing"
+                onClick={() => setShowBriefing(true)}
+              >
+                <BookOpen size={14} />
+                Mission Briefing
+              </button>
+            </div>
+
             {/* Cards row */}
             <div className="landing-cards">
               {/* Facilitator card */}
@@ -233,6 +245,77 @@ export default function HomePage(): React.ReactElement {
           </div>
         </div>
       </div>
+
+      {/* Mission Briefing Overlay */}
+      {showBriefing && (
+        <div className="briefing-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowBriefing(false); }}>
+          <div className="briefing-panel">
+            <div className="briefing-header">
+              <div className="briefing-header-left">
+                <span className="briefing-classification">CLASSIFIED — FACILITATOR BRIEF</span>
+                <h2 className="briefing-title">Mission Briefing</h2>
+              </div>
+              <button type="button" className="briefing-close" onClick={() => setShowBriefing(false)} aria-label="Close briefing">
+                <X size={20} />
+              </button>
+            </div>
+
+            <p className="briefing-intro">
+              You're about to run a live business simulation. Here's what your players need to know — and what you need to tell them.
+            </p>
+
+            <div className="briefing-grid">
+              <div className="briefing-card">
+                <span className="briefing-num">01</span>
+                <h3 className="briefing-card-title">The Stakes</h3>
+                <p>This isn't a case study. It's a live competition. Everyone in this room is the CEO of a company — and they're competing against each other in real time. From the moment the session opens, every decision counts.</p>
+              </div>
+
+              <div className="briefing-card">
+                <span className="briefing-num">02</span>
+                <h3 className="briefing-card-title">Six Rounds</h3>
+                <p>The simulation runs for six rounds. Each round represents a quarter. A world event drops — economic, political, social. Nobody sees it coming. That's the point. The best CEOs don't just react to crises. They position before them.</p>
+              </div>
+
+              <div className="briefing-card">
+                <span className="briefing-num">03</span>
+                <h3 className="briefing-card-title">Three Decisions</h3>
+                <p>Every round, players make three calls: where they allocate their budget across five strategic areas — Growth, People, Resilience, Brand, Compliance — what they focus on, and how much risk they're willing to carry. Simple levers. Infinite combinations.</p>
+              </div>
+
+              <div className="briefing-card">
+                <span className="briefing-num">04</span>
+                <h3 className="briefing-card-title">The Event</h3>
+                <p>Once everyone submits, the facilitator triggers the resolution. The world event fires. Your decisions interact with it. Some companies will come out stronger. Some won't. The spread is the lesson.</p>
+              </div>
+
+              <div className="briefing-card">
+                <span className="briefing-num">05</span>
+                <h3 className="briefing-card-title">The Leaderboard</h3>
+                <p>Rankings update after every round and broadcast live. Your score reflects overall company performance across all metrics. There's no hiding from it. First place after Round 6 wins. Everyone will know exactly where they stand.</p>
+              </div>
+
+              <div className="briefing-card">
+                <span className="briefing-num">06</span>
+                <h3 className="briefing-card-title">Company Interactions</h3>
+                <p>This isn't a solo game. Mid-simulation, players can strike trade deals, launch price wars, poach rivals' talent, or publicly challenge a competitor's reputation. Alliances matter. Enemies matter more. Choose carefully.</p>
+              </div>
+
+              <div className="briefing-card briefing-card-full">
+                <span className="briefing-num">07</span>
+                <h3 className="briefing-card-title">The Edge</h3>
+                <p>The players who win don't get lucky. They read the signals in the event description, match their budget to their posture, and pick a focus action that amplifies their strengths. When the event hits, they're already positioned. That's what separates a good quarter from a great company. Find that edge. Use it every round.</p>
+              </div>
+            </div>
+
+            <div className="briefing-footer">
+              <button type="button" className="landing-btn-primary" onClick={() => setShowBriefing(false)}>
+                Close Briefing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .landing-root {
@@ -426,6 +509,210 @@ export default function HomePage(): React.ReactElement {
           box-shadow: 0 0 16px rgba(0, 212, 255, 0.2);
         }
 
+        .landing-btn-briefing {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.5rem 1rem;
+          font-size: 0.76rem;
+          letter-spacing: 0.14em;
+          border: 1px solid rgba(255, 215, 0, 0.3);
+          background: rgba(255, 215, 0, 0.06);
+          color: var(--accent);
+          border-radius: 5px;
+          cursor: pointer;
+          font-family: var(--font-mono);
+          font-weight: 600;
+          text-transform: uppercase;
+          transition: border-color 200ms ease, background 200ms ease, box-shadow 200ms ease;
+        }
+
+        .landing-btn-briefing:hover {
+          border-color: rgba(255, 215, 0, 0.6);
+          background: rgba(255, 215, 0, 0.12);
+          box-shadow: 0 0 16px rgba(255, 215, 0, 0.15);
+        }
+
+        /* ── MISSION BRIEFING OVERLAY ─── */
+
+        .briefing-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 100;
+          background: rgba(5, 8, 14, 0.88);
+          backdrop-filter: blur(6px);
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          overflow-y: auto;
+          padding: 2rem 1rem 3rem;
+          animation: briefing-fade-in 220ms ease;
+        }
+
+        @keyframes briefing-fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .briefing-panel {
+          width: 100%;
+          max-width: 900px;
+          background: rgba(12, 17, 28, 0.98);
+          border: 1px solid rgba(255, 215, 0, 0.25);
+          border-radius: 14px;
+          padding: 2rem;
+          box-shadow: 0 40px 80px rgba(0, 0, 0, 0.7), 0 0 60px rgba(255, 215, 0, 0.06);
+          animation: briefing-slide-up 280ms cubic-bezier(0.16, 1, 0.3, 1);
+          position: relative;
+        }
+
+        .briefing-panel::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 2rem;
+          right: 2rem;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.5), transparent);
+        }
+
+        @keyframes briefing-slide-up {
+          from { opacity: 0; transform: translateY(24px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .briefing-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 1.5rem;
+        }
+
+        .briefing-header-left {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+        }
+
+        .briefing-classification {
+          font-family: var(--font-mono);
+          font-size: 0.65rem;
+          letter-spacing: 0.22em;
+          text-transform: uppercase;
+          color: var(--warn);
+          opacity: 0.8;
+        }
+
+        .briefing-title {
+          margin: 0;
+          font-family: var(--font-display);
+          font-weight: 700;
+          font-size: 2rem;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--ink);
+        }
+
+        .briefing-close {
+          border: 1px solid rgba(255, 215, 0, 0.2);
+          background: rgba(255, 215, 0, 0.06);
+          color: var(--muted);
+          border-radius: 6px;
+          padding: 0.45rem 0.55rem;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+          flex-shrink: 0;
+        }
+
+        .briefing-close:hover {
+          color: var(--ink);
+          border-color: rgba(255, 215, 0, 0.5);
+          background: rgba(255, 215, 0, 0.12);
+          box-shadow: none;
+          transform: none;
+        }
+
+        .briefing-intro {
+          margin: 0 0 1.75rem;
+          font-size: 1rem;
+          color: var(--muted);
+          line-height: 1.6;
+          border-left: 3px solid rgba(255, 215, 0, 0.4);
+          padding-left: 1rem;
+        }
+
+        .briefing-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 1rem;
+        }
+
+        .briefing-card {
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(255, 215, 0, 0.1);
+          border-radius: 8px;
+          padding: 1.2rem;
+          display: grid;
+          gap: 0.5rem;
+          position: relative;
+          transition: border-color 200ms ease, background 200ms ease;
+        }
+
+        .briefing-card:hover {
+          border-color: rgba(255, 215, 0, 0.25);
+          background: rgba(255, 215, 0, 0.03);
+        }
+
+        .briefing-card-full {
+          grid-column: 1 / -1;
+          border-color: rgba(255, 215, 0, 0.2);
+          background: rgba(255, 215, 0, 0.03);
+        }
+
+        .briefing-card-full:hover {
+          border-color: rgba(255, 215, 0, 0.4);
+          background: rgba(255, 215, 0, 0.05);
+        }
+
+        .briefing-num {
+          font-family: var(--font-mono);
+          font-size: 0.65rem;
+          letter-spacing: 0.2em;
+          color: var(--accent);
+          opacity: 0.7;
+        }
+
+        .briefing-card-title {
+          margin: 0;
+          font-family: var(--font-display);
+          font-weight: 700;
+          font-size: 1rem;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--ink);
+        }
+
+        .briefing-card p {
+          margin: 0;
+          font-size: 0.875rem;
+          line-height: 1.65;
+          color: var(--muted);
+        }
+
+        .briefing-card-full p {
+          color: var(--ink);
+          opacity: 0.85;
+        }
+
+        .briefing-footer {
+          margin-top: 1.75rem;
+          display: flex;
+          justify-content: flex-end;
+        }
+
         @media (max-width: 680px) {
           .landing-cards {
             grid-template-columns: 1fr;
@@ -433,6 +720,14 @@ export default function HomePage(): React.ReactElement {
 
           .landing-hero {
             padding: 2rem 1rem;
+          }
+
+          .briefing-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .briefing-panel {
+            padding: 1.25rem;
           }
         }
 
