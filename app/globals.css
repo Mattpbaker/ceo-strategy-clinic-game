@@ -763,6 +763,48 @@ button:disabled {
   grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
 }
 
+/* Strategy Decision card layout */
+.budget-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.field-hint {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  margin-top: 0;
+  transition: opacity 180ms ease, max-height 200ms ease, margin-top 150ms ease;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+label:hover .field-hint,
+label:focus-within .field-hint {
+  opacity: 1;
+  max-height: 5rem;
+  margin-top: 0.3rem;
+}
+
+.decision-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 215, 0, 0.1);
+}
+
+.decision-row label {
+  margin-bottom: 0;
+}
+
+.decision-submit {
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 215, 0, 0.1);
+}
+
 .metric {
   border: 1px solid var(--line);
   border-radius: 8px;

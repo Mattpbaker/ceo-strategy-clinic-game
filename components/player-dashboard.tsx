@@ -1494,7 +1494,7 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
               </div>
               <form onSubmit={submitDecision}>
                 <fieldset className="form-fieldset" disabled={Boolean(decisionBlockedReason)}>
-                  <div className="metrics-grid compact">
+                  <div className="budget-grid">
                     {Object.entries(budget).map(([key, value]) => (
                       <label key={key}>
                         {formatMetricLabel(key)}
@@ -1511,7 +1511,7 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                           }
                         />
                         {BUDGET_DESCRIPTIONS[key as keyof typeof BUDGET_DESCRIPTIONS] && (
-                          <p className="small" style={{ color: "var(--muted)", marginTop: "0.2rem", lineHeight: "1.4" }}>
+                          <p className="field-hint small">
                             {BUDGET_DESCRIPTIONS[key as keyof typeof BUDGET_DESCRIPTIONS]}
                           </p>
                         )}
@@ -1519,49 +1519,53 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                     ))}
                   </div>
 
-                  <label>
-                    Focus action
-                    <select
-                      value={focusAction}
-                      onChange={(event) => setFocusAction(event.target.value as typeof focusAction)}
-                    >
-                      <option value="expand_market">Expand market</option>
-                      <option value="improve_efficiency">Improve efficiency</option>
-                      <option value="invest_people">Invest in people</option>
-                      <option value="risk_mitigation">Risk mitigation</option>
-                      <option value="brand_campaign">Brand campaign</option>
-                    </select>
-                    {focusAction && FOCUS_ACTION_DESCRIPTIONS[focusAction] && (
-                      <p className="small" style={{ color: "var(--muted)", marginTop: "0.3rem", lineHeight: "1.4" }}>
-                        {FOCUS_ACTION_DESCRIPTIONS[focusAction]}
-                      </p>
-                    )}
-                  </label>
+                  <div className="decision-row">
+                    <label>
+                      Focus action
+                      <select
+                        value={focusAction}
+                        onChange={(event) => setFocusAction(event.target.value as typeof focusAction)}
+                      >
+                        <option value="expand_market">Expand market</option>
+                        <option value="improve_efficiency">Improve efficiency</option>
+                        <option value="invest_people">Invest in people</option>
+                        <option value="risk_mitigation">Risk mitigation</option>
+                        <option value="brand_campaign">Brand campaign</option>
+                      </select>
+                      {focusAction && FOCUS_ACTION_DESCRIPTIONS[focusAction] && (
+                        <p className="field-hint small">
+                          {FOCUS_ACTION_DESCRIPTIONS[focusAction]}
+                        </p>
+                      )}
+                    </label>
 
-                  <label>
-                    Risk posture
-                    <select
-                      value={riskPosture}
-                      onChange={(event) => setRiskPosture(event.target.value as typeof riskPosture)}
-                    >
-                      <option value="conservative">Conservative</option>
-                      <option value="balanced">Balanced</option>
-                      <option value="aggressive">Aggressive</option>
-                    </select>
-                    {riskPosture && RISK_POSTURE_DESCRIPTIONS[riskPosture] && (
-                      <p className="small" style={{ color: "var(--muted)", marginTop: "0.3rem", lineHeight: "1.4" }}>
-                        {RISK_POSTURE_DESCRIPTIONS[riskPosture]}
-                      </p>
-                    )}
-                  </label>
+                    <label>
+                      Risk posture
+                      <select
+                        value={riskPosture}
+                        onChange={(event) => setRiskPosture(event.target.value as typeof riskPosture)}
+                      >
+                        <option value="conservative">Conservative</option>
+                        <option value="balanced">Balanced</option>
+                        <option value="aggressive">Aggressive</option>
+                      </select>
+                      {riskPosture && RISK_POSTURE_DESCRIPTIONS[riskPosture] && (
+                        <p className="field-hint small">
+                          {RISK_POSTURE_DESCRIPTIONS[riskPosture]}
+                        </p>
+                      )}
+                    </label>
+                  </div>
 
-                  <button type="submit">
-                    {hasSubmittedCurrentRound ? "Update decision" : "Submit decision"}
-                  </button>
+                  <div className="decision-submit">
+                    <p className="small">Budget total: {budgetTotal}%</p>
+                    {decisionBlockedReason ? <p className="small">Locked: {decisionBlockedReason}</p> : null}
+                    <button type="submit">
+                      {hasSubmittedCurrentRound ? "Update decision" : "Submit decision"}
+                    </button>
+                  </div>
                 </fieldset>
               </form>
-              <p className="small">Budget total: {budgetTotal}%</p>
-              {decisionBlockedReason ? <p className="small">Locked: {decisionBlockedReason}</p> : null}
             </article>
 
             <article className="card">
