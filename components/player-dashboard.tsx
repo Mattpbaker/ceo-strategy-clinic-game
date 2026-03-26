@@ -5,6 +5,8 @@ import { LeaderboardComparisonChart } from "@/components/charts/leaderboard-comp
 import { BreakingNewsPanel } from "@/components/ui/breaking-news-panel";
 import { MessageCenterDrawer } from "@/components/ui/message-center-drawer";
 import { RoundSnapshotCard } from "@/components/ui/round-snapshot-card";
+import { PhaseBanner } from "@/components/ui/phase-banner";
+import { BUDGET_DESCRIPTIONS, FOCUS_ACTION_DESCRIPTIONS, RISK_POSTURE_DESCRIPTIONS, INTERACTION_DESCRIPTIONS } from "@/lib/game-descriptions";
 import { MessageSquare, Target } from "lucide-react";
 import { fetchApi } from "@/lib/http-client";
 import { useSessionRealtime } from "@/lib/use-session-realtime";
@@ -939,6 +941,36 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                       <option value="reputation_challenge">Reputation challenge</option>
                     </select>
                   </label>
+                  {interactionType && INTERACTION_DESCRIPTIONS[interactionType] && (() => {
+                    const desc = INTERACTION_DESCRIPTIONS[interactionType];
+                    const isCooperative = desc.type === "cooperative";
+                    return (
+                      <div style={{
+                        background: isCooperative ? "rgba(0,212,255,0.04)" : "rgba(255,107,53,0.04)",
+                        border: `1px solid ${isCooperative ? "rgba(0,212,255,0.2)" : "rgba(255,107,53,0.2)"}`,
+                        borderRadius: "6px",
+                        padding: "0.6rem 0.8rem",
+                        marginTop: "0.4rem",
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.3rem" }}>
+                          <span style={{
+                            color: isCooperative ? "var(--cyan)" : "var(--warn)",
+                            fontSize: "0.65rem",
+                            letterSpacing: "0.08em",
+                            fontFamily: "var(--font-mono)",
+                            textTransform: "uppercase",
+                          }}>
+                            {desc.type}
+                          </span>
+                          <span style={{ color: "var(--muted)", fontSize: "0.68rem" }}>Who benefits: {desc.beneficiary}</span>
+                        </div>
+                        <p style={{ color: "var(--ink)", fontSize: "0.78rem", lineHeight: "1.5", margin: 0 }}>{desc.description}</p>
+                        <p style={{ color: "var(--muted)", fontSize: "0.68rem", marginTop: "0.3rem", marginBottom: 0 }}>
+                          Intensity affects: {desc.intensityNote}
+                        </p>
+                      </div>
+                    );
+                  })()}
 
                   <label>
                     Intensity (10-100)
@@ -1077,6 +1109,14 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
           </button>
         </div>
       </section>
+
+      <PhaseBanner
+        phase={roundPhase}
+        sessionStatus={sessionStatus}
+        role="player"
+        decisionsSubmitted={state?.decisions_submitted}
+        totalPlayers={state?.companies.length}
+      />
 
       <section className="priority-grid">
         <RoundSnapshotCard
@@ -1338,6 +1378,48 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
         </>
       ) : (
         <>
+          {roundPhase === "resolved" && (mySeries?.points.length ?? 0) >= 2 && (() => {
+            const points = mySeries!.points;
+            const prev = points[points.length - 2];
+            const curr = points[points.length - 1];
+            const metricKeys: Array<keyof typeof curr.metrics> = [
+              "cash", "revenue_growth", "market_share", "talent_morale",
+              "operational_resilience", "brand_reputation", "regulatory_risk",
+            ];
+            return (
+              <section className="card" style={{ marginBottom: "1.5rem" }}>
+                <h3 style={{ marginBottom: "0.2rem" }}>Round Outcome</h3>
+                {state?.current_event?.event && (
+                  <p className="small" style={{ color: "var(--muted)", marginBottom: "0.8rem" }}>
+                    Event: <span style={{ color: "var(--accent)" }}>{state.current_event.event.title}</span>
+                  </p>
+                )}
+                <div style={{ display: "grid", gap: "0.5rem" }}>
+                  {metricKeys.map((key) => {
+                    const prevVal = prev.metrics[key];
+                    const currVal = curr.metrics[key];
+                    const delta = currVal - prevVal;
+                    const deltaColor = delta > 0 ? "var(--good)" : delta < 0 ? "var(--warn)" : "var(--muted)";
+                    const deltaStr = delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1);
+                    return (
+                      <div key={key}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: "0.85rem" }}>{formatMetricLabel(key)}</span>
+                          <span style={{ color: deltaColor, fontFamily: "var(--font-mono)", fontWeight: "700" }}>
+                            {delta === 0 ? "—" : deltaStr}
+                          </span>
+                        </div>
+                        <div style={{ color: "var(--muted)", fontSize: "0.72rem", paddingLeft: "0.5rem" }}>
+                          Round {prev.round_number}: {prevVal.toFixed(1)} → {currVal.toFixed(1)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })()}
+
           <section className="hierarchy-grid two-col">
             <article className="card assets-card">
               <div className="card-head">
@@ -1431,6 +1513,11 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                             }))
                           }
                         />
+                        {BUDGET_DESCRIPTIONS[key as keyof typeof BUDGET_DESCRIPTIONS] && (
+                          <p className="small" style={{ color: "var(--muted)", marginTop: "0.2rem", lineHeight: "1.4" }}>
+                            {BUDGET_DESCRIPTIONS[key as keyof typeof BUDGET_DESCRIPTIONS]}
+                          </p>
+                        )}
                       </label>
                     ))}
                   </div>
@@ -1447,6 +1534,11 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                       <option value="risk_mitigation">Risk mitigation</option>
                       <option value="brand_campaign">Brand campaign</option>
                     </select>
+                    {focusAction && FOCUS_ACTION_DESCRIPTIONS[focusAction] && (
+                      <p className="small" style={{ color: "var(--muted)", marginTop: "0.3rem", lineHeight: "1.4" }}>
+                        {FOCUS_ACTION_DESCRIPTIONS[focusAction]}
+                      </p>
+                    )}
                   </label>
 
                   <label>
@@ -1459,6 +1551,11 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                       <option value="balanced">Balanced</option>
                       <option value="aggressive">Aggressive</option>
                     </select>
+                    {riskPosture && RISK_POSTURE_DESCRIPTIONS[riskPosture] && (
+                      <p className="small" style={{ color: "var(--muted)", marginTop: "0.3rem", lineHeight: "1.4" }}>
+                        {RISK_POSTURE_DESCRIPTIONS[riskPosture]}
+                      </p>
+                    )}
                   </label>
 
                   <button type="submit">
