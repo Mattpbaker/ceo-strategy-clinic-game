@@ -212,8 +212,9 @@ export default function HomePage(): React.ReactElement {
           position: absolute;
           inset: 0;
           background:
-            radial-gradient(ellipse 60% 50% at 20% 40%, rgba(255, 215, 0, 0.04), transparent),
-            radial-gradient(ellipse 50% 40% at 80% 60%, rgba(0, 212, 255, 0.04), transparent);
+            radial-gradient(ellipse 70% 60% at 15% 35%, rgba(255, 215, 0, 0.16), transparent),
+            radial-gradient(ellipse 60% 50% at 85% 65%, rgba(0, 212, 255, 0.12), transparent),
+            radial-gradient(ellipse 40% 30% at 50% 90%, rgba(255, 107, 53, 0.05), transparent);
           pointer-events: none;
         }
 
@@ -273,7 +274,7 @@ export default function HomePage(): React.ReactElement {
 
         .landing-title-accent {
           color: var(--accent);
-          text-shadow: 0 0 40px rgba(255, 215, 0, 0.3);
+          text-shadow: 0 0 40px rgba(255, 215, 0, 0.6), 0 0 80px rgba(255, 215, 0, 0.25);
         }
 
         .landing-subtitle {
@@ -299,17 +300,18 @@ export default function HomePage(): React.ReactElement {
           display: grid;
           gap: 0.6rem;
           backdrop-filter: blur(12px);
+          box-shadow: inset 0 1px 0 rgba(255, 215, 0, 0.1);
           transition: border-color 200ms ease, box-shadow 200ms ease;
         }
 
         .landing-card:hover {
-          border-color: rgba(255, 215, 0, 0.4);
-          box-shadow: 0 0 30px rgba(255, 215, 0, 0.08);
+          border-color: rgba(255, 215, 0, 0.55);
+          box-shadow: 0 0 40px rgba(255, 215, 0, 0.18), inset 0 1px 0 rgba(255, 215, 0, 0.15);
         }
 
         .landing-card-player:hover {
-          border-color: rgba(0, 212, 255, 0.4);
-          box-shadow: 0 0 30px rgba(0, 212, 255, 0.08);
+          border-color: rgba(0, 212, 255, 0.55);
+          box-shadow: 0 0 40px rgba(0, 212, 255, 0.18), inset 0 1px 0 rgba(0, 212, 255, 0.15);
         }
 
         .landing-card-header {
