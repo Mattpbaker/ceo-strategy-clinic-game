@@ -773,6 +773,7 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
           tone: "default" as const
         }
       ];
+  const interactionDesc = interactionType ? INTERACTION_DESCRIPTIONS[interactionType] : null;
   const drawerTabs = [
     {
       id: "inbox",
@@ -941,36 +942,32 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                       <option value="reputation_challenge">Reputation challenge</option>
                     </select>
                   </label>
-                  {interactionType && INTERACTION_DESCRIPTIONS[interactionType] && (() => {
-                    const desc = INTERACTION_DESCRIPTIONS[interactionType];
-                    const isCooperative = desc.type === "cooperative";
-                    return (
-                      <div style={{
-                        background: isCooperative ? "rgba(0,212,255,0.04)" : "rgba(255,107,53,0.04)",
-                        border: `1px solid ${isCooperative ? "rgba(0,212,255,0.2)" : "rgba(255,107,53,0.2)"}`,
-                        borderRadius: "6px",
-                        padding: "0.6rem 0.8rem",
-                        marginTop: "0.4rem",
-                      }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.3rem" }}>
-                          <span style={{
-                            color: isCooperative ? "var(--cyan)" : "var(--warn)",
-                            fontSize: "0.65rem",
-                            letterSpacing: "0.08em",
-                            fontFamily: "var(--font-mono)",
-                            textTransform: "uppercase",
-                          }}>
-                            {desc.type}
-                          </span>
-                          <span style={{ color: "var(--muted)", fontSize: "0.68rem" }}>Who benefits: {desc.beneficiary}</span>
-                        </div>
-                        <p style={{ color: "var(--ink)", fontSize: "0.78rem", lineHeight: "1.5", margin: 0 }}>{desc.description}</p>
-                        <p style={{ color: "var(--muted)", fontSize: "0.68rem", marginTop: "0.3rem", marginBottom: 0 }}>
-                          Intensity affects: {desc.intensityNote}
-                        </p>
+                  {interactionDesc && (
+                    <div style={{
+                      background: interactionDesc.type === "cooperative" ? "rgba(0,212,255,0.04)" : "rgba(255,107,53,0.04)",
+                      border: `1px solid ${interactionDesc.type === "cooperative" ? "rgba(0,212,255,0.2)" : "rgba(255,107,53,0.2)"}`,
+                      borderRadius: "6px",
+                      padding: "0.6rem 0.8rem",
+                      marginTop: "0.4rem",
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.3rem" }}>
+                        <span style={{
+                          color: interactionDesc.type === "cooperative" ? "var(--cyan)" : "var(--warn)",
+                          fontSize: "0.65rem",
+                          letterSpacing: "0.08em",
+                          fontFamily: "var(--font-mono)",
+                          textTransform: "uppercase",
+                        }}>
+                          {interactionDesc.type}
+                        </span>
+                        <span style={{ color: "var(--muted)", fontSize: "0.68rem" }}>Who benefits: {interactionDesc.beneficiary}</span>
                       </div>
-                    );
-                  })()}
+                      <p style={{ color: "var(--ink)", fontSize: "0.78rem", lineHeight: "1.5", margin: 0 }}>{interactionDesc.description}</p>
+                      <p style={{ color: "var(--muted)", fontSize: "0.68rem", marginTop: "0.3rem", marginBottom: 0 }}>
+                        Intensity affects: {interactionDesc.intensityNote}
+                      </p>
+                    </div>
+                  )}
 
                   <label>
                     Intensity (10-100)
@@ -1382,10 +1379,7 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
             const points = mySeries!.points;
             const prev = points[points.length - 2];
             const curr = points[points.length - 1];
-            const metricKeys: Array<keyof typeof curr.metrics> = [
-              "cash", "revenue_growth", "market_share", "talent_morale",
-              "operational_resilience", "brand_reputation", "regulatory_risk",
-            ];
+            const metricKeys = Object.keys(curr.metrics) as Array<keyof typeof curr.metrics>;
             return (
               <section className="card" style={{ marginBottom: "1.5rem" }}>
                 <h3 style={{ marginBottom: "0.2rem" }}>Round Outcome</h3>
@@ -1399,7 +1393,10 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                     const prevVal = prev.metrics[key];
                     const currVal = curr.metrics[key];
                     const delta = currVal - prevVal;
-                    const deltaColor = delta > 0 ? "var(--good)" : delta < 0 ? "var(--warn)" : "var(--muted)";
+                    const isInverted = key === "regulatory_risk";
+                    const deltaColor = isInverted
+                      ? (delta > 0 ? "var(--warn)" : delta < 0 ? "var(--good)" : "var(--muted)")
+                      : (delta > 0 ? "var(--good)" : delta < 0 ? "var(--warn)" : "var(--muted)");
                     const deltaStr = delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1);
                     return (
                       <div key={key}>
