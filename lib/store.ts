@@ -94,7 +94,6 @@ class InMemoryGameStore {
 
   private timeline = new Map<string, TimelineEntry[]>();
   private usedCodes = new Set<string>();
-  private facilitatorEventUsed = new Set<string>();
 
   createSession(input: CreateSessionInput = {}): Session {
     const timestamp = nowIso();
@@ -391,10 +390,6 @@ class InMemoryGameStore {
   injectFacilitatorEvent(sessionRef: string, input: FacilitatorEventInput): RoundEvent {
     const session = this.requireSession(sessionRef);
 
-    if (this.facilitatorEventUsed.has(session.id)) {
-      throw new Error("Facilitator ad-hoc event already used in this session");
-    }
-
     const round = this.requireRoundByNumber(session.id, session.current_round_number);
 
     if (round.phase === "resolved") {
@@ -427,7 +422,6 @@ class InMemoryGameStore {
     };
 
     this.tables.round_events.push(roundEvent);
-    this.facilitatorEventUsed.add(session.id);
     this.writeAudit(session.id, "facilitator", "facilitator_event_injected", {
       round_id: round.id,
       event_id: event.id,
@@ -775,7 +769,6 @@ class InMemoryGameStore {
     };
     this.timeline.clear();
     this.usedCodes.clear();
-    this.facilitatorEventUsed.clear();
   }
 
   private appendTimeline(sessionId: string, entry: TimelineEntry): void {

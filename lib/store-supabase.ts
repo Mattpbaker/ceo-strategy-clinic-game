@@ -496,20 +496,6 @@ class SupabaseGameStore implements RuntimeGameStore {
       throw new Error("Current round already resolved");
     }
 
-    const { count, error: facilitatorCountError } = await this.client
-      .from("round_events")
-      .select("id", { count: "exact", head: true })
-      .eq("session_id", session.id)
-      .eq("source", "facilitator");
-
-    if (facilitatorCountError) {
-      throw new Error(facilitatorCountError.message);
-    }
-
-    if ((count ?? 0) > 0) {
-      throw new Error("Facilitator ad-hoc event already used in this session");
-    }
-
     const { data: existing, error: existingError } = await this.client
       .from("round_events")
       .select("id")
