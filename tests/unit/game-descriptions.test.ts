@@ -4,7 +4,7 @@ import {
   FOCUS_ACTION_DESCRIPTIONS,
   RISK_POSTURE_DESCRIPTIONS,
   INTERACTION_DESCRIPTIONS,
-} from "../../lib/game-descriptions";
+} from "@/lib/game-descriptions";
 
 describe("BUDGET_DESCRIPTIONS", () => {
   it("has entries for all five budget categories", () => {

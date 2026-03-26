@@ -1,6 +1,8 @@
 // lib/game-descriptions.ts
 
-export const BUDGET_DESCRIPTIONS = {
+import type { FocusAction, RiskPosture, DecisionBudgetSplit, InteractionType } from "@/lib/types";
+
+export const BUDGET_DESCRIPTIONS: Record<keyof DecisionBudgetSplit, string> = {
   growth: "Drives revenue growth and market share. Pairs well with Expand Market focus. High growth + Aggressive posture = more upside, more volatility.",
   people: "Builds talent morale and operational resilience through your workforce. Reduces attrition risk and improves efficiency multipliers.",
   resilience: "Strengthens operational systems against shocks. Reduces the negative impact of high-severity events on your metrics.",
@@ -8,19 +10,19 @@ export const BUDGET_DESCRIPTIONS = {
   compliance: "Reduces regulatory risk exposure. Important when political events are likely. Conservative posture amplifies compliance returns.",
 } as const;
 
-export const FOCUS_ACTION_DESCRIPTIONS: Record<string, string> = {
+export const FOCUS_ACTION_DESCRIPTIONS: Record<FocusAction, string> = {
   expand_market: "Amplifies market share and revenue gains this round. Boosts effectiveness of Growth budget.",
   improve_efficiency: "Reduces cost drag and improves resilience. Amplifies People and Resilience budget returns.",
   invest_people: "Directly improves talent morale and reduces attrition effects. Amplifies People budget.",
   risk_mitigation: "Reduces event shock impact this round. Pairs well with high Resilience and Compliance budgets.",
   brand_campaign: "Improves brand reputation and market share perception. Amplifies Brand budget returns.",
-};
+} as const;
 
-export const RISK_POSTURE_DESCRIPTIONS: Record<string, string> = {
+export const RISK_POSTURE_DESCRIPTIONS: Record<RiskPosture, string> = {
   conservative: "Lower upside but protected downside. Event shocks have reduced impact. Good when a high-severity event is likely.",
   balanced: "Moderate exposure in both directions. Default starting point for most rounds.",
   aggressive: "Higher potential gains but amplified losses. Best when the event is expected to be favourable or low-severity.",
-};
+} as const;
 
 export interface InteractionDescription {
   type: "cooperative" | "competitive";
@@ -29,7 +31,7 @@ export interface InteractionDescription {
   intensityNote: string;
 }
 
-export const INTERACTION_DESCRIPTIONS: Record<string, InteractionDescription> = {
+export const INTERACTION_DESCRIPTIONS: Record<InteractionType, InteractionDescription> = {
   trade_contract: {
     type: "cooperative",
     beneficiary: "Both companies",
