@@ -1,5 +1,6 @@
 "use client";
 
+import { Radio, X } from "lucide-react";
 import { ReactNode, useEffect } from "react";
 
 interface MessageCenterTab {
@@ -63,11 +64,15 @@ export function MessageCenterDrawer({
       <button className="drawer-overlay" onClick={onClose} aria-label="Close message center" />
       <aside className="drawer-panel">
         <header className="drawer-header">
-          <div>
-            <h2>{title}</h2>
-            {subtitle ? <p className="small">{subtitle}</p> : null}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+            <Radio size={16} color="var(--accent)" />
+            <div>
+              <h2>Intel Center</h2>
+              {subtitle ? <p className="small">{subtitle}</p> : null}
+            </div>
           </div>
-          <button className="secondary" onClick={onClose}>
+          <button className="secondary" onClick={onClose} style={{ display: "flex", alignItems: "center", gap: "0.3rem", padding: "0.4rem 0.7rem" }}>
+            <X size={14} />
             Close
           </button>
         </header>

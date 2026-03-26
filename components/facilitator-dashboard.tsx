@@ -4,6 +4,7 @@ import { LeaderboardComparisonChart } from "@/components/charts/leaderboard-comp
 import { BreakingNewsPanel } from "@/components/ui/breaking-news-panel";
 import { MessageCenterDrawer } from "@/components/ui/message-center-drawer";
 import { RoundSnapshotCard } from "@/components/ui/round-snapshot-card";
+import { Activity, MessageSquare, Trophy, Users, Zap } from "lucide-react";
 import { fetchApi } from "@/lib/http-client";
 import { useSessionRealtime } from "@/lib/use-session-realtime";
 import { MessageCenterFeed, SessionResults, SessionState } from "@/lib/types";
@@ -515,50 +516,76 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
     <main className={mainClassName}>
       <section className="hero hero-dashboard">
         <div className="hero-main">
-          <h1>Facilitator Console</h1>
-          <p>
-            Session <b>{session.code}</b> | Round {session.current_round_number} of {session.total_rounds}
+          <h1>
+            <span className="callsign">Command</span> Center
+          </h1>
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8rem", letterSpacing: "0.08em", color: "var(--muted)" }}>
+            SESSION <b style={{ color: "var(--accent)" }}>{session.code}</b>
+            &nbsp;|&nbsp;
+            ROUND <b style={{ color: "var(--ink)" }}>{session.current_round_number}</b> OF {session.total_rounds}
+            &nbsp;|&nbsp;
+            <Users size={11} style={{ display: "inline", verticalAlign: "middle" }} />
+            &nbsp;<b style={{ color: "var(--ink)" }}>{state.players.length}</b> UNITS
           </p>
           <p className="small hero-note">
             {isCompleted
-              ? "Session complete. Debrief the ranking swings, negotiation outcomes, and round timeline."
+              ? "Simulation complete. Debrief the ranking swings, negotiation outcomes, and round timeline."
               : pendingAction
-                ? `${formatActionLabel(pendingAction)} is in progress. Visible state must confirm before the board reports success.`
+                ? `${formatActionLabel(pendingAction)} is in progress. Awaiting state confirmation.`
                 : "Monitor all companies, phase controls, and message traffic."}
           </p>
+
+          {/* Round progress segments */}
+          <div className="round-progress">
+            <span className="round-progress-label">Mission</span>
+            <div className="round-progress-segments">
+              {Array.from({ length: session.total_rounds }, (_, i) => i + 1).map((r) => (
+                <div
+                  key={r}
+                  className={`round-segment${r < session.current_round_number ? " filled" : r === session.current_round_number ? " current" : ""}`}
+                />
+              ))}
+            </div>
+            <span className="round-progress-label">{session.current_round_number}/{session.total_rounds}</span>
+          </div>
         </div>
 
         <div className="hero-tools">
           <div className="inline">
-            <span className={`badge status-${session.status}`}>{session.status.toUpperCase()}</span>
-            <span className="badge">Players: {state.players.length}</span>
-            <span className="badge">Phase: {formatPhase(state.current_round?.phase)}</span>
+            <span className={`badge status-${session.status}`}>
+              <Activity size={9} />
+              {session.status.toUpperCase()}
+            </span>
             <span className="badge">
-              Realtime:{" "}
-              {realtime.status === "live"
-                ? "Live"
-                : realtime.status === "connecting"
-                  ? "Connecting"
-                  : realtime.backoffMs
-                    ? `Offline (${Math.ceil(realtime.backoffMs / 1000)}s)`
-                    : "Offline"}
+              <Zap size={9} />
+              {formatPhase(state.current_round?.phase)}
+            </span>
+            <span className="badge" style={
+              realtime.status === "live"
+                ? { color: "var(--good)", borderColor: "rgba(0,230,118,0.3)", background: "var(--good-soft)" }
+                : {}
+            }>
+              {realtime.status === "live" ? "◉ LIVE" : realtime.status === "connecting" ? "SYNC" : "OFFLINE"}
             </span>
           </div>
           <button className="mail-button" onClick={() => setDrawerOpen(true)}>
-            {"\u2709"} Message Center {pendingMessages.length > 0 ? `(${pendingMessages.length})` : ""}
+            <MessageSquare size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: "0.3rem" }} />
+            Intel Center {pendingMessages.length > 0 ? `(${pendingMessages.length})` : ""}
           </button>
         </div>
       </section>
 
       <section className="priority-grid">
         <RoundSnapshotCard
-          title={isCompleted ? "Session Debrief" : "Round Snapshot"}
+          title={isCompleted ? "Session Debrief" : "Mission Status"}
           subtitle={isCompleted ? `Completed session for ${state.players.length} companies` : `Round ${session.current_round_number}`}
           items={snapshotItems.map((item) => ({
             label: item.label,
             value: item.value,
             tone: item.tone
           }))}
+          currentRound={isCompleted ? session.total_rounds : session.current_round_number}
+          totalRounds={session.total_rounds}
           footer={
             <p className="small">
               {isCompleted
@@ -571,14 +598,17 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
         <BreakingNewsPanel
           event={state.current_event}
           roundNumber={state.current_round?.round_number ?? session.current_round_number}
-          title={isCompleted ? "Final Round Trigger" : "Breaking News"}
+          title={isCompleted ? "Final Round Trigger" : "Threat Alert"}
         />
       </section>
 
       <section className="hierarchy-grid two-col">
         <article className="card">
           <div className="card-head">
-            <h3>Leaderboard</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <Trophy size={14} color="var(--accent)" />
+              <h3>Combat Rankings</h3>
+            </div>
             <p className="small">Live ranking by total score.</p>
           </div>
 
@@ -811,8 +841,11 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
 
           <article className="card">
             <div className="card-head">
-              <h3>Inject One Ad-hoc Event</h3>
-              <p className="small">Allowed once per session. The success state waits for the breaking-news panel to update.</p>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Zap size={14} color="var(--warn)" />
+                <h3>Deploy Event</h3>
+              </div>
+              <p className="small">Allowed once per session. The success state waits for the threat-alert panel to update.</p>
             </div>
 
             <form onSubmit={injectEvent}>
@@ -870,7 +903,10 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
                   })}
                 </div>
 
-                <button type="submit">{pendingAction === "inject_event" ? "Injecting..." : "Inject Event"}</button>
+                <button type="submit" className="warn">
+                  <Zap size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: "0.3rem" }} />
+                  {pendingAction === "inject_event" ? "Deploying..." : "Deploy Event"}
+                </button>
               </fieldset>
               {!facilitatorToken.trim() ? <p className="small">Locked: facilitator token required.</p> : null}
             </form>

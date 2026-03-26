@@ -5,6 +5,7 @@ import { LeaderboardComparisonChart } from "@/components/charts/leaderboard-comp
 import { BreakingNewsPanel } from "@/components/ui/breaking-news-panel";
 import { MessageCenterDrawer } from "@/components/ui/message-center-drawer";
 import { RoundSnapshotCard } from "@/components/ui/round-snapshot-card";
+import { MessageSquare, Target } from "lucide-react";
 import { fetchApi } from "@/lib/http-client";
 import { useSessionRealtime } from "@/lib/use-session-realtime";
 import {
@@ -1001,46 +1002,93 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
     <main className={mainClassName}>
       <section className="hero hero-dashboard">
         <div className="hero-main">
-          <h1>Player Dashboard</h1>
-          <p>
-            Session <b>{session.code}</b> | Round {session.current_round_number} of {session.total_rounds}
+          <h1>
+            <span className="callsign">Mission</span> Control
+          </h1>
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.8rem", letterSpacing: "0.08em", color: "var(--muted)" }}>
+            SESSION <b style={{ color: "var(--accent)" }}>{session.code}</b>
+            &nbsp;|&nbsp;
+            ROUND <b style={{ color: "var(--ink)" }}>{session.current_round_number}</b> OF {session.total_rounds}
           </p>
           <p className="small hero-note">
             {isCompleted
-              ? "Session complete. Review your final standing, negotiation archive, and round-by-round story."
+              ? "Simulation complete. Review final standing, negotiation archive, and round-by-round story."
               : `Next action: ${nextAction}`}
           </p>
+
+          {/* Round progress segments */}
+          <div className="round-progress">
+            <span className="round-progress-label">Progress</span>
+            <div className="round-progress-segments">
+              {Array.from({ length: session.total_rounds }, (_, i) => i + 1).map((r) => (
+                <div
+                  key={r}
+                  className={`round-segment${r < session.current_round_number ? " filled" : r === session.current_round_number ? " current" : ""}`}
+                />
+              ))}
+            </div>
+            <span className="round-progress-label">{session.current_round_number}/{session.total_rounds}</span>
+          </div>
         </div>
+
         <div className="hero-tools">
           <div className="inline">
             <span className={`badge status-${session.status}`}>{session.status.toUpperCase()}</span>
-            <span className="badge">Phase: {formatPhase(roundPhase)}</span>
             <span className="badge">
-              Realtime:{" "}
-              {realtime.status === "live"
-                ? "Live"
-                : realtime.status === "connecting"
-                  ? "Connecting"
-                  : realtime.backoffMs
-                    ? `Offline (${Math.ceil(realtime.backoffMs / 1000)}s)`
-                    : "Offline"}
+              <Target size={10} />
+              {formatPhase(roundPhase)}
+            </span>
+            <span className="badge" style={
+              realtime.status === "live"
+                ? { color: "var(--good)", borderColor: "rgba(0,230,118,0.3)", background: "var(--good-soft)" }
+                : {}
+            }>
+              {realtime.status === "live" ? "◉ LIVE" : realtime.status === "connecting" ? "CONNECTING" : "OFFLINE"}
             </span>
           </div>
+
+          {/* Rank badge if available */}
+          {myLeaderboardEntry != null && results ? (
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.75rem",
+              color: "var(--muted)"
+            }}>
+              <span style={{ fontSize: "0.68rem", letterSpacing: "0.12em", textTransform: "uppercase" }}>Rank</span>
+              <span style={{
+                fontFamily: "var(--font-display)",
+                fontWeight: 700,
+                fontSize: "1.4rem",
+                color: myLeaderboardEntry.rank === 1 ? "var(--accent)" : myLeaderboardEntry.rank === 2 ? "#c0c0c0" : myLeaderboardEntry.rank === 3 ? "#cd7f32" : "var(--ink)",
+                lineHeight: 1
+              }}>
+                #{myLeaderboardEntry.rank}
+              </span>
+              <span style={{ color: "var(--muted)", fontSize: "0.68rem" }}>/ {results.leaderboard.length}</span>
+            </div>
+          ) : null}
+
           <button className="mail-button" onClick={() => setDrawerOpen(true)}>
-            {"\u2709"} Message Center {pendingInboxCount > 0 ? `(${pendingInboxCount})` : ""}
+            <MessageSquare size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: "0.3rem" }} />
+            Intel Center {pendingInboxCount > 0 ? `(${pendingInboxCount})` : ""}
           </button>
         </div>
       </section>
 
       <section className="priority-grid">
         <RoundSnapshotCard
-          title={isCompleted ? "Final Debrief" : "Round Snapshot"}
+          title={isCompleted ? "Final Debrief" : "Mission Status"}
           subtitle={isCompleted ? `${myCompany?.name || "Company"} final state` : `Round ${session.current_round_number}`}
           items={snapshotItems.map((item) => ({
             label: item.label,
             value: item.value,
             tone: item.tone
           }))}
+          currentRound={isCompleted ? session.total_rounds : session.current_round_number}
+          totalRounds={session.total_rounds}
           footer={
             <p className="small">
               {isCompleted
