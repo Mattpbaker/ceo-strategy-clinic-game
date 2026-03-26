@@ -4,6 +4,8 @@ import { LeaderboardComparisonChart } from "@/components/charts/leaderboard-comp
 import { BreakingNewsPanel } from "@/components/ui/breaking-news-panel";
 import { MessageCenterDrawer } from "@/components/ui/message-center-drawer";
 import { RoundSnapshotCard } from "@/components/ui/round-snapshot-card";
+import { PhaseBanner } from "@/components/ui/phase-banner";
+import { EVENT_PRESETS, EventPreset } from "@/lib/event-presets";
 import { Activity, MessageSquare, Trophy, Users, Zap } from "lucide-react";
 import { fetchApi } from "@/lib/http-client";
 import { useSessionRealtime } from "@/lib/use-session-realtime";
@@ -127,6 +129,8 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
     "A sudden external shift pressures company strategy and execution."
   );
   const [eventEffects, setEventEffects] = useState<EventEffectInputs>(emptyEffects);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const [presetCategoryFilter, setPresetCategoryFilter] = useState<"all" | "economic" | "social" | "political">("all");
 
   useEffect(() => {
     const tokenFromQuery = searchParams.get("token")?.trim() || "";
@@ -353,6 +357,23 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
     });
   }
 
+  function applyPreset(preset: EventPreset) {
+    setSelectedPresetId(preset.id);
+    setEventCategory(preset.category);
+    setEventSeverity(preset.severity);
+    setEventTitle(preset.title);
+    setEventNarrative(preset.narrative);
+    setEventEffects({
+      cash: String(preset.effects.cash),
+      revenue_growth: String(preset.effects.revenue_growth),
+      market_share: String(preset.effects.market_share),
+      talent_morale: String(preset.effects.talent_morale),
+      operational_resilience: String(preset.effects.operational_resilience),
+      brand_reputation: String(preset.effects.brand_reputation),
+      regulatory_risk: String(preset.effects.regulatory_risk),
+    });
+  }
+
   async function injectEvent(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError(null);
@@ -502,12 +523,14 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
           tone: leadDelta > 0 ? ("good" as const) : ("muted" as const)
         }
       ];
+  const roundPhase = currentRound?.phase ?? "pending";
+  const sessionStatus = state?.session.status ?? "waiting";
   const mainClassName = [
     "page",
     "dashboard-shell",
     "dashboard-context",
     "facilitator-view",
-    `phase-${currentRound?.phase ?? "pending"}`,
+    `phase-${roundPhase}`,
     `session-${session.status}`,
     isCompleted ? "mode-complete" : "mode-live"
   ].join(" ");
@@ -574,6 +597,14 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
           </button>
         </div>
       </section>
+
+      <PhaseBanner
+        phase={roundPhase}
+        sessionStatus={sessionStatus}
+        role="facilitator"
+        decisionsSubmitted={state?.decisions_submitted}
+        totalPlayers={state?.companies.length}
+      />
 
       <section className="priority-grid">
         <RoundSnapshotCard
@@ -849,6 +880,79 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
             </div>
 
             <form onSubmit={injectEvent}>
+              {/* Preset Library */}
+              <div style={{ marginBottom: "1rem" }}>
+                <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.8rem", flexWrap: "wrap" }}>
+                  {(["all", "economic", "social", "political"] as const).map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setPresetCategoryFilter(cat)}
+                      style={{
+                        background: presetCategoryFilter === cat ? "rgba(255,215,0,0.15)" : "rgba(107,122,148,0.08)",
+                        color: presetCategoryFilter === cat ? "var(--accent)" : "var(--muted)",
+                        border: presetCategoryFilter === cat ? "1px solid rgba(255,215,0,0.3)" : "1px solid rgba(107,122,148,0.2)",
+                        borderRadius: "4px",
+                        padding: "0.15rem 0.6rem",
+                        fontSize: "0.65rem",
+                        letterSpacing: "0.1em",
+                        fontFamily: "var(--font-mono)",
+                        textTransform: "uppercase",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem" }}>
+                  {EVENT_PRESETS
+                    .filter((p) => presetCategoryFilter === "all" || p.category === presetCategoryFilter)
+                    .map((preset) => {
+                      const isSelected = selectedPresetId === preset.id;
+                      const severityColor = preset.severity === "high"
+                        ? { bg: "rgba(255,107,53,0.08)", border: isSelected ? "rgba(255,107,53,0.7)" : "rgba(255,107,53,0.3)", label: "#ff6b35" }
+                        : preset.severity === "medium"
+                        ? { bg: "rgba(255,215,0,0.04)", border: isSelected ? "rgba(255,215,0,0.6)" : "rgba(255,215,0,0.18)", label: "#ffd700" }
+                        : { bg: "rgba(0,212,255,0.04)", border: isSelected ? "rgba(0,212,255,0.6)" : "rgba(0,212,255,0.15)", label: "#00d4ff" };
+
+                      const keyEffects = Object.entries(preset.effects)
+                        .filter(([, v]) => v !== 0)
+                        .slice(0, 2)
+                        .map(([k, v]) => `${k.replace(/_/g, " ")} ${v > 0 ? "+" : ""}${v}`)
+                        .join("  ");
+
+                      return (
+                        <div
+                          key={preset.id}
+                          onClick={() => applyPreset(preset)}
+                          style={{
+                            background: severityColor.bg,
+                            border: `1px solid ${severityColor.border}`,
+                            borderRadius: "8px",
+                            padding: "0.6rem",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <div style={{ color: severityColor.label, fontSize: "0.62rem", letterSpacing: "0.1em", fontFamily: "var(--font-mono)", textTransform: "uppercase" }}>
+                            {preset.category} · {preset.severity}
+                          </div>
+                          <div style={{ color: "var(--ink)", fontSize: "0.78rem", fontWeight: "700", margin: "0.2rem 0" }}>
+                            {preset.label}
+                          </div>
+                          <div style={{ color: "var(--muted)", fontSize: "0.65rem" }}>{keyEffects}</div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              <div style={{ borderTop: "1px solid var(--line)", paddingTop: "0.8rem", marginBottom: "0.6rem", textAlign: "center" }}>
+                <span style={{ color: "var(--muted)", fontSize: "0.65rem", letterSpacing: "0.1em", fontFamily: "var(--font-mono)" }}>
+                  — CUSTOMIZE OR DEPLOY AS-IS —
+                </span>
+              </div>
+
               <fieldset className="form-fieldset" disabled={!canInjectEvent}>
                 <label>
                   Category
