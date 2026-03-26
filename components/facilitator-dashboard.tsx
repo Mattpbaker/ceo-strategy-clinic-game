@@ -603,7 +603,7 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
         sessionStatus={sessionStatus}
         role="facilitator"
         decisionsSubmitted={state?.decisions_submitted}
-        totalPlayers={state?.companies.length}
+        totalPlayers={state.players.length}
       />
 
       <section className="priority-grid">
