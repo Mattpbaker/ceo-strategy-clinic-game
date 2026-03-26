@@ -328,7 +328,6 @@ export function WarRoomDisplay({ sessionCode }: WarRoomDisplayProps): React.Reac
           display: grid;
           grid-template-columns: 60fr 40fr;
           overflow: hidden;
-          height: calc(100vh - 40px);
         }
 
         /* Panels */
@@ -490,7 +489,7 @@ export function WarRoomDisplay({ sessionCode }: WarRoomDisplayProps): React.Reac
           font-size: 1.6rem;
           line-height: 1;
           padding-top: 0.1rem;
-          min-width: 3ch;
+          min-width: 4.5ch;
           text-align: right;
         }
 
