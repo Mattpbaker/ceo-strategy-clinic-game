@@ -114,7 +114,9 @@ export function LeaderboardComparisonChart({
               <XAxis dataKey="label" />
               <YAxis />
               <Tooltip
-                formatter={(value: number | string | undefined) => Number(value ?? 0).toFixed(2)}
+                formatter={(value) =>
+                  Array.isArray(value) ? value.join(", ") : Number(value ?? 0).toFixed(2)
+                }
                 labelFormatter={(label) => `Round ${String(label).replace("R", "")}`}
               />
               {visibleIds.map((companyId, index) => {

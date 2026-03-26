@@ -151,3 +151,72 @@ Original prompt: PLEASE IMPLEMENT THIS PLAN: CEO Strategy Clinic Game MVP Plan (
     - `output/web-game/visual-overhaul/interaction-state/*`
     - `output/web-game/visual-overhaul/post-resolve/*`
 - Noted issue discovered during testing: resolving before migration existed caused partial round-update behavior in Supabase mode (round marked resolved before snapshot insert failed). Added follow-up in docs to consider transactional resolve via RPC.
+
+## Vercel Multi-Agent Playtest (2026-03-26, in progress)
+- Goal: run a production-first 4-role playtest against `https://ceo-strategy-clinic-game.vercel.app/`, capture artifacts, and produce a gameplay/design improvement report.
+- Added temporary harness `scripts/vercel_multiagent_playtest.mjs` to coordinate 4 isolated Playwright browser contexts against the deployed site and save screenshots/state/logs under `output/web-game/vercel-playtest-<timestamp>/`.
+- Pre-run product gap confirmed from current code:
+  - Player message center UI supports `Accept` and `Reject`, but not `Counter`.
+  - Player compose UI does not expose `expires_in_minutes`, so expiry-path testing needs an API-side workaround from the browser context.
+- Next: install a local no-save Playwright runtime, execute the production run, inspect screenshots/logs, then write `report.md` with gameplay/function and frontend/immersion findings.
+- Run completed on production in artifact folder `output/web-game/vercel-playtest-2026-03-26-114836/`.
+- Live session `PTXBZS` completed all 6 rounds with the scripted interaction mix:
+  - accepted, rejected, countered, and expired interaction states were all exercised;
+  - counter and expiry required browser-context API workarounds because the player UI does not expose those branches.
+- Final deliverables created:
+  - `output/web-game/vercel-playtest-2026-03-26-114836/shared/run-summary.json`
+  - `output/web-game/vercel-playtest-2026-03-26-114836/report.md`
+- Highest-signal findings from the run:
+  - missing player-facing `Counter` action;
+  - missing player-facing expiry controls/countdown;
+  - stale facilitator feedback after resolve in at least one message-center capture;
+  - completion mode still looks like the active play dashboard;
+  - overall presentation is readable but not yet immersive.
+
+## Improvement Implementation Pass (2026-03-26)
+- Implemented Wave 1 in `components/player-dashboard.tsx`:
+  - player-facing `Counter` action in inbox with inline counter form;
+  - player-facing `Expires in` control in compose;
+  - expiry/status messaging in inbox and outbox;
+  - counter/outbox guidance and richer interaction status copy.
+- Implemented Wave 2 in `components/facilitator-dashboard.tsx`:
+  - explicit in-flight facilitator action state for start/pause/resume/open interaction/resolve/inject event;
+  - success copy waits for visible state confirmation before reporting completion;
+  - live control gating/readout so the facilitator can see token lock, action state, and visible phase.
+- Implemented Wave 3 in both dashboards:
+  - completed sessions now render dedicated debrief layouts instead of leaving the live controls/forms on screen;
+  - player debrief adds strategy profile, negotiation record, final metrics, and round-by-round debrief;
+  - facilitator debrief adds session summary, wrap-up tools, and round debrief timeline.
+- Implemented Wave 4 visual pass in `app/globals.css`:
+  - stronger hero treatment and phase-aware atmosphere;
+  - calmer but more intentional panel styling;
+  - denser message-center styling;
+  - new debrief/timeline summary styles.
+- Small typecheck fix:
+  - updated Recharts tooltip formatter typing in `components/charts/company-performance-chart.tsx` and `components/charts/leaderboard-comparison-chart.tsx` for the stricter Next.js build.
+- Updated `scripts/vercel_multiagent_playtest.mjs` to match the new product behavior:
+  - counter and expiry flows now use the player UI instead of API workarounds;
+  - facilitator player-count wait was hardened.
+
+## Validation Log (2026-03-26)
+- `npm test` passed: 5 files, 8 tests.
+- `npm run build` passed.
+- `develop-web-game` Playwright smoke runs completed against local dev on port `3001`:
+  - `output/web-game/implementation-smoke/player-live/`
+  - `output/web-game/implementation-smoke/facilitator-live/`
+- Full local four-role harness run completed successfully:
+  - `output/web-game/vercel-playtest-2026-03-26-123744/`
+  - `shared/run-summary.json` shows no blocker and no API workarounds for counter/expiry.
+- Post-fix completed-state cleanup check passed:
+  - `output/web-game/implementation-smoke/completed-clean/player.png`
+  - `output/web-game/implementation-smoke/completed-clean/facilitator.png`
+  - corresponding JSON files show `notices: []` after completion.
+- Artifact spot checks completed:
+  - `student-conservative/10-round-2-countered.png`
+  - `student-conservative/16-round-5-proposal-left-pending.png`
+  - `facilitator/20-final-leaderboard.png`
+  - `student-coop/19-final-results-view.png`
+- Runtime logs:
+  - console errors: none
+  - page errors: none
+  - failed requests: one aborted initial `_rsc` navigation per player context (`net::ERR_ABORTED`), no functional impact observed

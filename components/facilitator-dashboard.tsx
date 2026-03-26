@@ -14,6 +14,9 @@ interface FacilitatorDashboardProps {
   sessionRef: string;
 }
 
+type FacilitatorControlAction = "start" | "pause" | "resume" | "advance_to_interaction";
+type FacilitatorMutationAction = FacilitatorControlAction | "resolve_round" | "inject_event";
+
 interface EventEffectInputs {
   cash: string;
   revenue_growth: string;
@@ -43,6 +46,10 @@ const effectBounds: Record<keyof EventEffectInputs, { min: number; max: number }
   brand_reputation: { min: -30, max: 30 },
   regulatory_risk: { min: -30, max: 30 }
 };
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
 
 function formatPhase(phase: string | null | undefined): string {
   if (!phase) {
@@ -77,6 +84,25 @@ function formatDateTime(iso: string): string {
   });
 }
 
+function formatActionLabel(action: FacilitatorMutationAction): string {
+  switch (action) {
+    case "start":
+      return "Start session";
+    case "pause":
+      return "Pause session";
+    case "resume":
+      return "Resume session";
+    case "advance_to_interaction":
+      return "Open interaction";
+    case "resolve_round":
+      return "Resolve round";
+    case "inject_event":
+      return "Inject event";
+    default:
+      return action;
+  }
+}
+
 export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps): React.ReactElement {
   const searchParams = useSearchParams();
 
@@ -86,6 +112,7 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [facilitatorToken, setFacilitatorToken] = useState("");
+  const [pendingAction, setPendingAction] = useState<FacilitatorMutationAction | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<"all" | "pending" | "accepted" | "rejected">("all");
@@ -120,25 +147,61 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
     };
   }
 
+  const applyLoadedData = useCallback((sessionState: SessionState, sessionResults: SessionResults) => {
+    setState(sessionState);
+    setResults(sessionResults);
+    setError(null);
+  }, []);
+
+  const fetchSessionData = useCallback(async () => {
+    const [sessionState, sessionResults] = await Promise.all([
+      fetchApi<SessionState>(`/api/sessions/${sessionRef}/state`),
+      fetchApi<SessionResults>(`/api/sessions/${sessionRef}/results`)
+    ]);
+
+    return { sessionState, sessionResults };
+  }, [sessionRef]);
+
   const load = useCallback(async () => {
     try {
-      const [sessionState, sessionResults] = await Promise.all([
-        fetchApi<SessionState>(`/api/sessions/${sessionRef}/state`),
-        fetchApi<SessionResults>(`/api/sessions/${sessionRef}/results`)
-      ]);
-      setState(sessionState);
-      setResults(sessionResults);
-      setError(null);
+      const { sessionState, sessionResults } = await fetchSessionData();
+      applyLoadedData(sessionState, sessionResults);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to fetch session state");
     } finally {
       setLoading(false);
     }
-  }, [sessionRef]);
+  }, [applyLoadedData, fetchSessionData]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (state?.session.status === "completed") {
+      setStatusMessage(null);
+    }
+  }, [state?.session.status]);
+
+  const refreshUntilVisible = useCallback(
+    async (matcher: (sessionState: SessionState) => boolean): Promise<boolean> => {
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const { sessionState, sessionResults } = await fetchSessionData();
+        applyLoadedData(sessionState, sessionResults);
+
+        if (matcher(sessionState)) {
+          return true;
+        }
+
+        if (attempt < 5) {
+          await sleep(350);
+        }
+      }
+
+      return false;
+    },
+    [applyLoadedData, fetchSessionData]
+  );
 
   const realtimeTables = useMemo(
     () => [
@@ -202,36 +265,101 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
     (message) => message.status === "rejected" || message.status === "expired" || message.status === "countered"
   );
 
-  async function control(action: "start" | "pause" | "resume" | "advance_to_interaction"): Promise<void> {
-    try {
-      await fetchApi<{ session: SessionState["session"] }>(`/api/facilitator/${sessionRef}/control`, {
-        method: "POST",
-        headers: facilitatorHeaders(),
-        body: JSON.stringify({ action })
-      });
-      setStatusMessage(`Action ${action} completed.`);
-      await load();
-    } catch (controlError) {
-      setError(controlError instanceof Error ? controlError.message : "Unable to update session state");
-    }
+  const runFacilitatorMutation = useCallback(
+    async ({
+      action,
+      request,
+      matcher,
+      progressMessage,
+      successMessage
+    }: {
+      action: FacilitatorMutationAction;
+      request: () => Promise<unknown>;
+      matcher: (sessionState: SessionState) => boolean;
+      progressMessage: string;
+      successMessage: string;
+    }): Promise<void> => {
+      setError(null);
+      setPendingAction(action);
+      setStatusMessage(progressMessage);
+
+      try {
+        await request();
+        const confirmed = await refreshUntilVisible(matcher);
+        setStatusMessage(
+          confirmed ? successMessage : `${formatActionLabel(action)} submitted. Waiting for visible board sync.`
+        );
+      } catch (mutationError) {
+        setError(mutationError instanceof Error ? mutationError.message : "Unable to update facilitator state");
+        setStatusMessage(null);
+      } finally {
+        setPendingAction(null);
+      }
+    },
+    [refreshUntilVisible]
+  );
+
+  async function control(action: FacilitatorControlAction): Promise<void> {
+    await runFacilitatorMutation({
+      action,
+      request: () =>
+        fetchApi<{ session: SessionState["session"] }>(`/api/facilitator/${sessionRef}/control`, {
+          method: "POST",
+          headers: facilitatorHeaders(),
+          body: JSON.stringify({ action })
+        }),
+      matcher: (nextState) => {
+        switch (action) {
+          case "start":
+            return nextState.session.status === "running" && nextState.current_round?.phase === "decision";
+          case "pause":
+            return nextState.session.status === "paused";
+          case "resume":
+            return nextState.session.status === "running";
+          case "advance_to_interaction":
+            return nextState.current_round?.phase === "interaction";
+          default:
+            return false;
+        }
+      },
+      progressMessage: `${formatActionLabel(action)}...`,
+      successMessage: `${formatActionLabel(action)} confirmed on the board.`
+    });
   }
 
   async function resolveRound(): Promise<void> {
-    try {
-      await fetchApi<{ resolution: unknown }>(`/api/facilitator/${sessionRef}/round/resolve`, {
-        method: "POST",
-        headers: facilitatorHeaders()
-      });
-      setStatusMessage("Round resolved.");
-      await load();
-    } catch (resolveError) {
-      setError(resolveError instanceof Error ? resolveError.message : "Unable to resolve round");
+    if (!state) {
+      return;
     }
+
+    const currentRoundId = state.current_round?.id;
+    const currentRoundNumber = state.session.current_round_number;
+
+    await runFacilitatorMutation({
+      action: "resolve_round",
+      request: () =>
+        fetchApi<{ resolution: unknown }>(`/api/facilitator/${sessionRef}/round/resolve`, {
+          method: "POST",
+          headers: facilitatorHeaders()
+        }),
+      matcher: (nextState) =>
+        nextState.session.status === "completed" ||
+        nextState.current_round?.id !== currentRoundId ||
+        (nextState.session.current_round_number === currentRoundNumber + 1 &&
+          nextState.current_round?.phase === "decision"),
+      progressMessage: "Resolving round...",
+      successMessage: "Round resolve confirmed on the board."
+    });
   }
 
   async function injectEvent(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError(null);
+
+    if (!state?.current_round) {
+      setError("No active round is available for event injection.");
+      return;
+    }
 
     const parsedEffects = Object.fromEntries(
       Object.entries(eventEffects)
@@ -244,25 +372,33 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
       return;
     }
 
-    try {
-      await fetchApi(`/api/facilitator/${sessionRef}/event`, {
-        method: "POST",
-        headers: facilitatorHeaders(),
-        body: JSON.stringify({
-          category: eventCategory,
-          severity: eventSeverity,
-          title: eventTitle,
-          narrative: eventNarrative,
-          effects: parsedEffects
-        })
-      });
+    const requestedTitle = eventTitle.trim();
+    const requestedNarrative = eventNarrative.trim();
+    const requestedRoundId = state.current_round.id;
 
-      setStatusMessage("Facilitator event injected for this round.");
-      setEventEffects(emptyEffects);
-      await load();
-    } catch (injectError) {
-      setError(injectError instanceof Error ? injectError.message : "Unable to inject event");
-    }
+    await runFacilitatorMutation({
+      action: "inject_event",
+      request: async () => {
+        await fetchApi(`/api/facilitator/${sessionRef}/event`, {
+          method: "POST",
+          headers: facilitatorHeaders(),
+          body: JSON.stringify({
+            category: eventCategory,
+            severity: eventSeverity,
+            title: requestedTitle,
+            narrative: requestedNarrative,
+            effects: parsedEffects
+          })
+        });
+        setEventEffects(emptyEffects);
+      },
+      matcher: (nextState) =>
+        nextState.current_event?.round_id === requestedRoundId &&
+        nextState.current_event?.event.title === requestedTitle &&
+        nextState.current_event?.event.narrative === requestedNarrative,
+      progressMessage: "Injecting facilitator event...",
+      successMessage: "Facilitator event confirmed in the breaking news feed."
+    });
   }
 
   if (loading && !state) {
@@ -282,41 +418,114 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
   }
 
   const session = state.session;
+  const currentRound = state.current_round;
+  const isCompleted = session.status === "completed";
   const leaderboard = results?.leaderboard || [];
   const leadDelta = leaderboard.length > 1 ? leaderboard[0].total_score - leaderboard[1].total_score : 0;
-
-  const snapshotItems = [
-    {
-      label: "Decisions",
-      value: `${state.decisions_submitted}/${state.players.length || 1}`,
-      tone: "default"
+  const companyNameById = new Map(state.companies.map((company) => [company.id, company.name]));
+  const winningEntry = leaderboard[0] ?? null;
+  const winningCompanyName = winningEntry ? companyNameById.get(winningEntry.company_id) ?? winningEntry.company_id : null;
+  const interactionCounts = allMessages.reduce(
+    (counts, message) => {
+      counts[message.status] += 1;
+      return counts;
     },
     {
-      label: "Round Phase",
-      value: formatPhase(state.current_round?.phase),
-      tone: "default"
-    },
-    {
-      label: "Active Companies",
-      value: String(state.companies.length),
-      tone: "default"
-    },
-    {
-      label: "Top Rank Delta",
-      value: leaderboard.length > 1 ? leadDelta.toFixed(2) : "N/A",
-      tone: leadDelta > 0 ? "good" : "muted"
+      pending: 0,
+      accepted: 0,
+      rejected: 0,
+      countered: 0,
+      expired: 0
     }
-  ] as const;
+  );
+  const timeline = results?.decision_timeline || [];
+  const controlLocked = !facilitatorToken.trim() || pendingAction !== null;
+  const canStart = session.status === "waiting" && state.players.length > 0 && !controlLocked;
+  const canPause = session.status === "running" && !controlLocked;
+  const canResume = session.status === "paused" && !controlLocked;
+  const canOpenInteraction =
+    (session.status === "running" || session.status === "paused") &&
+    currentRound?.phase === "decision" &&
+    !controlLocked;
+  const canResolve =
+    (session.status === "running" || session.status === "paused") &&
+    currentRound?.phase !== "resolved" &&
+    currentRound !== null &&
+    !controlLocked;
+  const canInjectEvent =
+    (session.status === "running" || session.status === "paused") &&
+    currentRound?.phase !== "resolved" &&
+    !controlLocked;
+  const snapshotItems = isCompleted
+    ? [
+        {
+          label: "Winner",
+          value: winningCompanyName || "N/A",
+          tone: "good" as const
+        },
+        {
+          label: "Closest Finish",
+          value: leaderboard.length > 1 ? leadDelta.toFixed(2) : "N/A",
+          tone: leadDelta > 0 ? ("warn" as const) : ("muted" as const)
+        },
+        {
+          label: "Accepted Deals",
+          value: String(interactionCounts.accepted),
+          tone: interactionCounts.accepted > 0 ? ("good" as const) : ("muted" as const)
+        },
+        {
+          label: "Expired Deals",
+          value: String(interactionCounts.expired),
+          tone: interactionCounts.expired > 0 ? ("warn" as const) : ("default" as const)
+        }
+      ]
+    : [
+        {
+          label: "Decisions",
+          value: `${state.decisions_submitted}/${state.players.length || 1}`,
+          tone: "default" as const
+        },
+        {
+          label: "Round Phase",
+          value: formatPhase(currentRound?.phase),
+          tone: "default" as const
+        },
+        {
+          label: "Control State",
+          value: pendingAction ? formatActionLabel(pendingAction) : facilitatorToken.trim() ? "Ready" : "Token required",
+          tone: pendingAction ? ("warn" as const) : facilitatorToken.trim() ? ("good" as const) : ("muted" as const)
+        },
+        {
+          label: "Top Rank Delta",
+          value: leaderboard.length > 1 ? leadDelta.toFixed(2) : "N/A",
+          tone: leadDelta > 0 ? ("good" as const) : ("muted" as const)
+        }
+      ];
+  const mainClassName = [
+    "page",
+    "dashboard-shell",
+    "dashboard-context",
+    "facilitator-view",
+    `phase-${currentRound?.phase ?? "pending"}`,
+    `session-${session.status}`,
+    isCompleted ? "mode-complete" : "mode-live"
+  ].join(" ");
 
   return (
-    <main className="page dashboard-shell">
+    <main className={mainClassName}>
       <section className="hero hero-dashboard">
         <div className="hero-main">
           <h1>Facilitator Console</h1>
           <p>
             Session <b>{session.code}</b> | Round {session.current_round_number} of {session.total_rounds}
           </p>
-          <p className="small hero-note">Monitor all companies, phase controls, and message traffic.</p>
+          <p className="small hero-note">
+            {isCompleted
+              ? "Session complete. Debrief the ranking swings, negotiation outcomes, and round timeline."
+              : pendingAction
+                ? `${formatActionLabel(pendingAction)} is in progress. Visible state must confirm before the board reports success.`
+                : "Monitor all companies, phase controls, and message traffic."}
+          </p>
         </div>
 
         <div className="hero-tools">
@@ -343,19 +552,26 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
 
       <section className="priority-grid">
         <RoundSnapshotCard
-          title="Round Snapshot"
-          subtitle={`Round ${session.current_round_number}`}
+          title={isCompleted ? "Session Debrief" : "Round Snapshot"}
+          subtitle={isCompleted ? `Completed session for ${state.players.length} companies` : `Round ${session.current_round_number}`}
           items={snapshotItems.map((item) => ({
             label: item.label,
             value: item.value,
             tone: item.tone
           }))}
-          footer={<p className="small">Current controls remain server authoritative.</p>}
+          footer={
+            <p className="small">
+              {isCompleted
+                ? "Use this panel as the discussion opener before walking through the detailed timeline."
+                : "Controls stay server authoritative and now wait for the visible board state before confirming success."}
+            </p>
+          }
         />
 
         <BreakingNewsPanel
           event={state.current_event}
           roundNumber={state.current_round?.round_number ?? session.current_round_number}
+          title={isCompleted ? "Final Round Trigger" : "Breaking News"}
         />
       </section>
 
@@ -395,111 +611,272 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
         />
       </section>
 
-      <section className="hierarchy-grid two-col action-grid">
-        <article className="card">
-          <div className="card-head">
-            <h3>Session Controls</h3>
-            <p className="small">Facilitator token is required for control, event, and resolve routes.</p>
-          </div>
+      {isCompleted ? (
+        <>
+          <section className="hierarchy-grid two-col action-grid">
+            <article className="card card-prominent debrief-summary">
+              <div className="card-head">
+                <h3>Facilitator Debrief</h3>
+                <p className="small">A concise readout for the live discussion at the end of the session.</p>
+              </div>
+              <p className="debrief-headline">{winningCompanyName ? `${winningCompanyName} finished first.` : "Final winner unavailable."}</p>
+              <p className="small">
+                {leaderboard.length > 1
+                  ? `The top two companies were separated by ${leadDelta.toFixed(2)} points, so small late-round moves still mattered.`
+                  : "Only one ranked company is available in the final leaderboard."}
+              </p>
+              <div className="summary-strip">
+                <div className="summary-item">
+                  <span className="small">Companies</span>
+                  <b>{state.players.length}</b>
+                </div>
+                <div className="summary-item">
+                  <span className="small">Rounds logged</span>
+                  <b>{timeline.length}</b>
+                </div>
+                <div className="summary-item">
+                  <span className="small">Accepted</span>
+                  <b>{interactionCounts.accepted}</b>
+                </div>
+                <div className="summary-item">
+                  <span className="small">Expired</span>
+                  <b>{interactionCounts.expired}</b>
+                </div>
+              </div>
+            </article>
 
-          <label>
-            Facilitator token
-            <input
-              value={facilitatorToken}
-              onChange={(event) => {
-                const next = event.target.value;
-                setFacilitatorToken(next);
-                localStorage.setItem(`ceo-clinic:facilitator:${sessionRef}`, next);
-              }}
-              placeholder="Paste facilitator token"
-            />
-          </label>
+            <article className="card">
+              <div className="card-head">
+                <h3>Wrap-Up Tools</h3>
+                <p className="small">Keep the end-state readable instead of leaving the live controls on screen.</p>
+              </div>
 
-          <div className="inline">
-            <button onClick={() => void control("start")}>Start</button>
-            <button className="secondary" onClick={() => void control("pause")}>
-              Pause
-            </button>
-            <button className="secondary" onClick={() => void control("resume")}>
-              Resume
-            </button>
-            <button className="secondary" onClick={() => void control("advance_to_interaction")}>
-              Open Interaction
-            </button>
-            <button className="warn" onClick={() => void resolveRound()}>
-              Resolve Round
-            </button>
-          </div>
+              <div className="metrics-grid compact">
+                <div className="metric">
+                  <span className="small">Accepted deals</span>
+                  <b>{interactionCounts.accepted}</b>
+                </div>
+                <div className="metric">
+                  <span className="small">Rejected deals</span>
+                  <b>{interactionCounts.rejected}</b>
+                </div>
+                <div className="metric">
+                  <span className="small">Countered</span>
+                  <b>{interactionCounts.countered}</b>
+                </div>
+                <div className="metric">
+                  <span className="small">Expired</span>
+                  <b>{interactionCounts.expired}</b>
+                </div>
+              </div>
 
-          <p className="small">
-            Decisions submitted: {state.decisions_submitted} / {state.players.length || 1}
-          </p>
-        </article>
+              {!facilitatorToken.trim() ? (
+                <label>
+                  Facilitator token
+                  <input
+                    value={facilitatorToken}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setFacilitatorToken(next);
+                      localStorage.setItem(`ceo-clinic:facilitator:${sessionRef}`, next);
+                    }}
+                    placeholder="Paste facilitator token"
+                  />
+                </label>
+              ) : null}
 
-        <article className="card">
-          <div className="card-head">
-            <h3>Inject One Ad-hoc Event</h3>
-            <p className="small">Allowed once per session.</p>
-          </div>
+              <button onClick={() => setDrawerOpen(true)}>Open Message Center</button>
+            </article>
+          </section>
 
-          <form onSubmit={injectEvent}>
-            <label>
-              Category
-              <select value={eventCategory} onChange={(event) => setEventCategory(event.target.value as typeof eventCategory)}>
-                <option value="economic">Economic</option>
-                <option value="social">Social</option>
-                <option value="political">Political</option>
-              </select>
-            </label>
+          <section className="card timeline-card">
+            <div className="card-head split">
+              <div>
+                <h3>Round Debrief Timeline</h3>
+                <p className="small">Walk through how each event shifted decisions, negotiations, and the lead company.</p>
+              </div>
+              <span className="badge">Rounds: {timeline.length}</span>
+            </div>
 
-            <label>
-              Severity
-              <select value={eventSeverity} onChange={(event) => setEventSeverity(event.target.value as typeof eventSeverity)}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </label>
+            <div className="timeline-list">
+              {timeline.map((entry) => {
+                const roundLeader = entry.leaderboard[0];
+                const interactionSummary = entry.interactions.reduce(
+                  (counts, interaction) => {
+                    counts[interaction.status] = (counts[interaction.status] || 0) + 1;
+                    return counts;
+                  },
+                  {} as Record<string, number>
+                );
 
-            <label>
-              Title
-              <input value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} required />
-            </label>
-
-            <label>
-              Narrative
-              <textarea value={eventNarrative} onChange={(event) => setEventNarrative(event.target.value)} rows={3} required />
-            </label>
-
-            <div className="metrics-grid compact">
-              {(Object.entries(eventEffects) as Array<[keyof EventEffectInputs, string]>).map(([key, value]) => {
-                const bounds = effectBounds[key];
                 return (
-                  <label key={key}>
-                    {key} ({bounds.min} to {bounds.max})
-                    <input
-                      type="number"
-                      min={bounds.min}
-                      max={bounds.max}
-                      step={1}
-                      value={value}
-                      onChange={(event) =>
-                        setEventEffects((prev) => ({
-                          ...prev,
-                          [key]: event.target.value
-                        }))
-                      }
-                      placeholder="0"
-                    />
-                  </label>
+                  <article className="timeline-entry" key={entry.round_number}>
+                    <div className="timeline-topline">
+                      <span className="badge">Round {entry.round_number}</span>
+                      <span className="small">
+                        {entry.event.category.toUpperCase()} | {entry.event.severity.toUpperCase()}
+                      </span>
+                    </div>
+                    <h4>{entry.event.title}</h4>
+                    <p className="small">{entry.event.narrative}</p>
+                    <div className="timeline-stats">
+                      <span>Decisions {entry.decisions.length}</span>
+                      <span>Interactions {entry.interactions.length}</span>
+                      <span>Accepted {interactionSummary.accepted || 0}</span>
+                      <span>Expired {interactionSummary.expired || 0}</span>
+                    </div>
+                    <p className="small">
+                      Leader after resolve:{" "}
+                      <b>
+                        {roundLeader
+                          ? companyNameById.get(roundLeader.company_id) ?? roundLeader.company_id
+                          : "Unavailable"}
+                      </b>
+                      {roundLeader ? ` (${roundLeader.total_score.toFixed(2)})` : ""}
+                    </p>
+                  </article>
                 );
               })}
             </div>
+          </section>
+        </>
+      ) : (
+        <section className="hierarchy-grid two-col action-grid">
+          <article className="card">
+            <div className="card-head">
+              <h3>Session Controls</h3>
+              <p className="small">The board only confirms success after the visible phase or status matches the requested action.</p>
+            </div>
 
-            <button type="submit">Inject Event</button>
-          </form>
-        </article>
-      </section>
+            <label>
+              Facilitator token
+              <input
+                value={facilitatorToken}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setFacilitatorToken(next);
+                  localStorage.setItem(`ceo-clinic:facilitator:${sessionRef}`, next);
+                }}
+                placeholder="Paste facilitator token"
+              />
+            </label>
+
+            <div className="metrics-grid compact operations-readout">
+              <div className="metric">
+                <span className="small">Control gate</span>
+                <b>{facilitatorToken.trim() ? "Unlocked" : "Token required"}</b>
+              </div>
+              <div className="metric">
+                <span className="small">Action state</span>
+                <b>{pendingAction ? formatActionLabel(pendingAction) : "Ready"}</b>
+              </div>
+              <div className="metric">
+                <span className="small">Visible phase</span>
+                <b>{formatPhase(currentRound?.phase)}</b>
+              </div>
+              <div className="metric">
+                <span className="small">Decisions in</span>
+                <b>
+                  {state.decisions_submitted}/{state.players.length || 1}
+                </b>
+              </div>
+            </div>
+
+            <div className="inline">
+              <button disabled={!canStart} onClick={() => void control("start")}>
+                {pendingAction === "start" ? "Starting..." : "Start"}
+              </button>
+              <button className="secondary" disabled={!canPause} onClick={() => void control("pause")}>
+                {pendingAction === "pause" ? "Pausing..." : "Pause"}
+              </button>
+              <button className="secondary" disabled={!canResume} onClick={() => void control("resume")}>
+                {pendingAction === "resume" ? "Resuming..." : "Resume"}
+              </button>
+              <button
+                className="secondary"
+                disabled={!canOpenInteraction}
+                onClick={() => void control("advance_to_interaction")}
+              >
+                {pendingAction === "advance_to_interaction" ? "Opening..." : "Open Interaction"}
+              </button>
+              <button className="warn" disabled={!canResolve} onClick={() => void resolveRound()}>
+                {pendingAction === "resolve_round" ? "Resolving..." : "Resolve Round"}
+              </button>
+            </div>
+
+            {!facilitatorToken.trim() ? (
+              <p className="small">Locked: facilitator token is required for control, event, and resolve routes.</p>
+            ) : null}
+          </article>
+
+          <article className="card">
+            <div className="card-head">
+              <h3>Inject One Ad-hoc Event</h3>
+              <p className="small">Allowed once per session. The success state waits for the breaking-news panel to update.</p>
+            </div>
+
+            <form onSubmit={injectEvent}>
+              <fieldset className="form-fieldset" disabled={!canInjectEvent}>
+                <label>
+                  Category
+                  <select value={eventCategory} onChange={(event) => setEventCategory(event.target.value as typeof eventCategory)}>
+                    <option value="economic">Economic</option>
+                    <option value="social">Social</option>
+                    <option value="political">Political</option>
+                  </select>
+                </label>
+
+                <label>
+                  Severity
+                  <select value={eventSeverity} onChange={(event) => setEventSeverity(event.target.value as typeof eventSeverity)}>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+
+                <label>
+                  Title
+                  <input value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} required />
+                </label>
+
+                <label>
+                  Narrative
+                  <textarea value={eventNarrative} onChange={(event) => setEventNarrative(event.target.value)} rows={3} required />
+                </label>
+
+                <div className="metrics-grid compact">
+                  {(Object.entries(eventEffects) as Array<[keyof EventEffectInputs, string]>).map(([key, value]) => {
+                    const bounds = effectBounds[key];
+                    return (
+                      <label key={key}>
+                        {key} ({bounds.min} to {bounds.max})
+                        <input
+                          type="number"
+                          min={bounds.min}
+                          max={bounds.max}
+                          step={1}
+                          value={value}
+                          onChange={(event) =>
+                            setEventEffects((prev) => ({
+                              ...prev,
+                              [key]: event.target.value
+                            }))
+                          }
+                          placeholder="0"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <button type="submit">{pendingAction === "inject_event" ? "Injecting..." : "Inject Event"}</button>
+              </fieldset>
+              {!facilitatorToken.trim() ? <p className="small">Locked: facilitator token required.</p> : null}
+            </form>
+          </article>
+        </section>
+      )}
 
       {statusMessage ? <p className="notice">{statusMessage}</p> : null}
       {error ? <p className="error">{error}</p> : null}
@@ -533,6 +910,7 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
                     <p className="small">Type: {message.type.replace("_", " ")}</p>
                     <p className="small">Intensity: {message.terms.intensity}</p>
                     {message.terms.message ? <p className="small">&quot;{message.terms.message}&quot;</p> : null}
+                    <p className="small">Expires {formatDateTime(message.expires_at)}</p>
                     <p className="small">Updated {formatDateTime(message.updated_at)}</p>
                   </article>
                 ))}
@@ -553,6 +931,7 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
                     </p>
                     <p className="small">Round {message.round_number ?? "?"}</p>
                     <p className="small">Type: {message.type.replace("_", " ")}</p>
+                    <p className="small">Expires {formatDateTime(message.expires_at)}</p>
                     <p className="small">Updated {formatDateTime(message.updated_at)}</p>
                   </article>
                 ))}
@@ -572,6 +951,7 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
                       <b>{message.proposer_company_name}</b> to <b>{message.target_company_name}</b>
                     </p>
                     <p className="small">Round {message.round_number ?? "?"}</p>
+                    <p className="small">Expires {formatDateTime(message.expires_at)}</p>
                     <p className="small">Updated {formatDateTime(message.updated_at)}</p>
                   </article>
                 ))}
@@ -594,6 +974,7 @@ export function FacilitatorDashboard({ sessionRef }: FacilitatorDashboardProps):
                       <span className={`badge status-${message.status}`}>{message.status.toUpperCase()}</span>
                     </div>
                     <p className="small">Round {message.round_number ?? "?"}</p>
+                    <p className="small">Expires {formatDateTime(message.expires_at)}</p>
                     <p className="small">Updated {formatDateTime(message.updated_at)}</p>
                   </article>
                 ))}
