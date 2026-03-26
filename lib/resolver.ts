@@ -6,6 +6,7 @@ import {
   DecisionRecord,
   EventCard,
   InteractionProposal,
+  InteractionType,
   Round,
   RoundResolution,
   Session
@@ -75,8 +76,14 @@ export function resolveRound(input: ResolveRoundInput): ResolveRoundOutput {
     }
   }
 
+  const UNILATERAL_TYPES: InteractionType[] = ["price_war", "talent_poach", "reputation_challenge"];
+
   for (const interaction of interactions.sort((a, b) => a.id.localeCompare(b.id))) {
-    if (interaction.status !== "accepted") {
+    const isUnilateral = UNILATERAL_TYPES.includes(interaction.type);
+    const fires = isUnilateral
+      ? interaction.status === "pending" || interaction.status === "accepted"
+      : interaction.status === "accepted";
+    if (!fires) {
       continue;
     }
 

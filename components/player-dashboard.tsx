@@ -798,6 +798,11 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
               <p className="small">Updated {formatDateTime(message.updated_at)}</p>
               {message.status === "pending" ? (
                 <>
+                  {["price_war", "talent_poach", "reputation_challenge"].includes(message.type) ? (
+                    <p className="small message-unilateral-notice">
+                      ⚡ This action is unilateral — it will take effect at round resolution regardless of your response.
+                    </p>
+                  ) : (
                   <div className="inline">
                     <button
                       type="button"
@@ -823,6 +828,7 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                       Reject
                     </button>
                   </div>
+                  )}
                   {activeCounterProposalId === message.proposal_id ? (
                     <form
                       className="drawer-form counter-form"
