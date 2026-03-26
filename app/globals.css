@@ -789,7 +789,7 @@ button:disabled {
 label:hover .field-hint,
 label:focus-within .field-hint {
   opacity: 1;
-  max-height: 5rem;
+  max-height: 12rem;
   margin-top: 0.3rem;
 }
 
@@ -808,6 +808,76 @@ label:focus-within .field-hint {
 .decision-submit {
   padding-top: 0.85rem;
   border-top: 1px solid rgba(255, 215, 0, 0.1);
+}
+
+/* Budget slider row */
+.budget-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.budget-value {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* Range input — War Room style */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--accent) var(--range-pct, 0%),
+    rgba(255, 215, 0, 0.15) var(--range-pct, 0%),
+    rgba(255, 215, 0, 0.15) 100%
+  );
+  cursor: pointer;
+  outline: none;
+  box-shadow: none;
+  margin: 0.25rem 0 0;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  cursor: pointer;
+  transition: box-shadow 150ms ease;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  cursor: pointer;
+  border: none;
+  transition: box-shadow 150ms ease;
+}
+
+input[type="range"]:hover::-webkit-slider-thumb,
+input[type="range"]:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.2), 0 0 12px var(--accent-glow);
+}
+
+input[type="range"]:hover::-moz-range-thumb,
+input[type="range"]:focus::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.2), 0 0 12px var(--accent-glow);
 }
 
 .metric {

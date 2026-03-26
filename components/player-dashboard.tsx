@@ -1497,12 +1497,16 @@ export function PlayerDashboard({ sessionRef }: PlayerDashboardProps): React.Rea
                   <div className="budget-grid">
                     {Object.entries(budget).map(([key, value]) => (
                       <label key={key}>
-                        {formatMetricLabel(key)}
+                        <span className="budget-label-row">
+                          <span>{formatMetricLabel(key)}</span>
+                          <span className="budget-value">{value}%</span>
+                        </span>
                         <input
-                          type="number"
+                          type="range"
                           min={0}
                           max={100}
                           value={value}
+                          style={{ ["--range-pct" as string]: `${value}%` }}
                           onChange={(event) =>
                             setBudget((prev) => ({
                               ...prev,
