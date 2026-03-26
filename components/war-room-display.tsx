@@ -214,7 +214,7 @@ export function WarRoomDisplay({ sessionCode }: WarRoomDisplayProps): React.Reac
                       className="wr-rank-score"
                       style={{ color: entry.rank <= 3 ? rankColor : "var(--ink)" }}
                     >
-                      {pct}
+                      {pct}%
                     </span>
                   </li>
                 );
